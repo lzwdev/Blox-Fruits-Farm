@@ -146,7 +146,7 @@ local TitleBar = Instance.new("Frame")
 TitleBar.Size = UDim2.new(1,0,0,45); TitleBar.BackgroundColor3 = Color3.fromRGB(20,20,35); TitleBar.BorderSizePixel = 0; TitleBar.ZIndex = 5; TitleBar.Parent = MainFrame
 local TitleText = Instance.new("TextLabel")
 TitleText.Size = UDim2.new(1,-80,1,0); TitleText.Position = UDim2.new(0,15,0,0); TitleText.BackgroundTransparency = 1
-TitleText.Text = "⚡ Chest & Fruit Farm v5"; TitleText.TextColor3 = Color3.fromRGB(255,255,255)
+TitleText.Text = "⚡ Chest & Fruit Farm BETA"; TitleText.TextColor3 = Color3.fromRGB(255,255,255)
 TitleText.TextSize = 15; TitleText.Font = Enum.Font.GothamBlack; TitleText.TextXAlignment = Enum.TextXAlignment.Left; TitleText.ZIndex = 6; TitleText.Parent = TitleBar
 
 -- Tabs
@@ -552,5 +552,5 @@ task.spawn(function()
     if _G.AutoServerhop then chestsCollected=0; SetHop("Hop at: ".._G.ChestTarget) end
 end)
 
-print("✅ Chest & Fruit Farm v5.0 loaded!")
+print("✅ Chest & Fruit Farm BETA (v5.0) loaded!")
 print("Features: Slider 20-250 | Auto Marines/Pirates Dropdown | Better UI | Accurate Counter")
