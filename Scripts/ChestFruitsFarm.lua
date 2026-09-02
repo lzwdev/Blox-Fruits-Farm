@@ -1,1403 +1,556 @@
--- Chest & Fruit Farm Script - Premium Custom UI with Serverhop
--- Features: Chest Farm, Fruit ESP, Auto Collect Fruit, Noclip, Speed 300, Auto Serverhop
+-- Chest & Fruit Farm Script - Premium Custom UI mit Serverhop v5.0
+-- Features: Chest Farm, Fruit ESP, Auto Collect Fruit, Noclip, Speed 300, Auto Serverhop, Auto Marines/Pirates
+
+if not game:IsLoaded() then
+    game.Loaded:Wait()
+end
+repeat task.wait() until game:GetService("Players") and game:GetService("Workspace") and game:GetService("ReplicatedStorage")
 
 local Players = game:GetService("Players")
 local CollectionService = game:GetService("CollectionService")
 local TweenService = game:GetService("TweenService")
-local _UserInputService = game:GetService("UserInputService")
+local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local CoreGui = game:GetService("CoreGui")
 local TeleportService = game:GetService("TeleportService")
 local HttpService = game:GetService("HttpService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local LP = Players.LocalPlayer
 
 -- ==================== NOCLIP ====================
 local noclipActive = true
 
-local function EnableNoclip(character)
-    if not character then return end
-    pcall(function()
-        for _, part in pairs(character:GetDescendants()) do
-            if part:IsA("BasePart") then
-                part.CanCollide = false
-            end
-        end
-    end)
+local function EnableNoclip(c)
+    if not c then return end
+    pcall(function() for _, p in pairs(c:GetDescendants()) do if p:IsA("BasePart") then p.CanCollide = false end end end)
 end
 
-local function DisableNoclip(character)
-    if not character then return end
-    pcall(function()
-        for _, part in pairs(character:GetDescendants()) do
-            if part:IsA("BasePart") then
-                part.CanCollide = true
-            end
-        end
-    end)
+local function DisableNoclip(c)
+    if not c then return end
+    pcall(function() for _, p in pairs(c:GetDescendants()) do if p:IsA("BasePart") then p.CanCollide = true end end end)
 end
 
-LP.CharacterAdded:Connect(function(char)
-    task.wait(0.1)
-    if noclipActive then
-        EnableNoclip(char)
-    end
-end)
+LP.CharacterAdded:Connect(function(c) task.wait(0.1); if noclipActive then EnableNoclip(c) end end)
+RunService.Stepped:Connect(function() if noclipActive and LP.Character then EnableNoclip(LP.Character) end end)
 
-RunService.Stepped:Connect(function()
-    if noclipActive and LP.Character then
-        EnableNoclip(LP.Character)
-    end
-end)
-
--- ==================== SETTINGS SPEICHERN ====================
-local SettingsFileName = "ChestFruitFarm_Settings.json"
+-- ==================== SETTINGS ====================
+local SettingsFile = "ChestFruitFarm_Settings.json"
 local DefaultSettings = {
-    ChestESP = false,
-    FruitESP = false,
-    Noclip = true,
-    AutoServerhop = false,
-    ServerhopInterval = 100
+    ChestESP = false, FruitESP = false, Noclip = true,
+    AutoServerhop = false, ServerhopInterval = 100,
+    AutoChestFarm = false, AutoFruit = false,
+    AutoMarines = false, AutoPirates = false,
+    ChestTarget = 100
 }
 
 local function SaveSettings()
-    local settings = {
-        ChestESP = _G.ChestESP,
-        FruitESP = _G.FruitESP,
-        Noclip = noclipActive,
-        AutoServerhop = _G.AutoServerhop,
-        ServerhopInterval = serverhopInterval
+    local s = {
+        ChestESP = _G.ChestESP, FruitESP = _G.FruitESP, Noclip = noclipActive,
+        AutoServerhop = _G.AutoServerhop, ServerhopInterval = _G.ServerhopInterval,
+        AutoChestFarm = _G.ChestFarm, AutoFruit = _G.AutoFruit,
+        AutoMarines = _G.AutoMarines, AutoPirates = _G.AutoPirates,
+        ChestTarget = _G.ChestTarget
     }
-    
-    if writefile and pcall then
-        pcall(function()
-            writefile(SettingsFileName, HttpService:JSONEncode(settings))
-        end)
-    end
+    if writefile then pcall(function() writefile(SettingsFile, HttpService:JSONEncode(s)) end) end
 end
 
 local function LoadSettings()
-    local settings = DefaultSettings
-    
-    if readfile and pcall then
-        pcall(function()
-            local data = readfile(SettingsFileName)
-            local loaded = HttpService:JSONDecode(data)
-            for k, v in pairs(loaded) do
-                settings[k] = v
-            end
-        end)
-    end
-    
-    return settings
+    local s = DefaultSettings
+    if readfile then pcall(function() local d = readfile(SettingsFile); local l = HttpService:JSONDecode(d); for k,v in pairs(l) do s[k]=v end end) end
+    return s
 end
 
 -- ==================== VARIABLEN ====================
-_G.ChestFarm = false
-_G.ChestESP = false
-_G.FruitESP = false
-_G.AutoFruit = false
-_G.AutoServerhop = false
-local espObjects = {}
-local fruitEspObjects = {}
-local currentTween = nil
-local chestHistory = {}
-local collectedFruits = {}
-local lastTeleportTime = 0
-local TELEPORT_COOLDOWN = 0.5
-local minimized = false
-local isAnimating = false
-local currentTab = "Main"
+_G.ChestFarm = false; _G.ChestESP = false; _G.FruitESP = false; _G.AutoFruit = false
+_G.AutoServerhop = false; _G.AutoMarines = false; _G.AutoPirates = false
+_G.ServerhopInterval = 100; _G.ChestTarget = 100
 
--- Chest Timeout System
-local currentChestTarget = nil
-local chestArrivedTime = 0
-local CHEST_TIMEOUT = 5
-local CHEST_ARRIVAL_DISTANCE = 10
-local ignoredChests = {}
+local saved = LoadSettings()
+_G.ChestESP = saved.ChestESP; _G.FruitESP = saved.FruitESP; noclipActive = saved.Noclip
+_G.AutoServerhop = saved.AutoServerhop; _G.ServerhopInterval = saved.ServerhopInterval
+_G.ChestFarm = saved.AutoChestFarm or false; _G.AutoFruit = saved.AutoFruit or false
+_G.AutoMarines = saved.AutoMarines or false; _G.AutoPirates = saved.AutoPirates or false
+_G.ChestTarget = saved.ChestTarget or 100
 
--- Serverhop System
-local chestsCollected = 0
-serverhopInterval = 100
-local totalChestsEver = 0
-local lastServerhopTime = 0
-local SERVERHOP_COOLDOWN = 30
-local isServerhopping = false
-local BLOX_FRUITS_PLACE_ID = 2753915549 -- Blox Fruits Place ID
+local espObjects = {}; local fruitEspObjects = {}; local currentTween = nil
+local lastTeleportTime = 0; local minimized = false; local isAnimating = false; local currentTab = "Main"
+local currentChestTarget = nil; local chestArrivedTime = 0; local ignoredChests = {}
+local chestsCollected = 0; local totalChestsEver = 0; local lastServerhopTime = 0
+local isServerhopping = false; local BLOX_FRUITS_PLACE_ID = 2753915549
 
--- ==================== SETTINGS LADEN ====================
-local savedSettings = LoadSettings()
-_G.ChestESP = savedSettings.ChestESP
-_G.FruitESP = savedSettings.FruitESP
-noclipActive = savedSettings.Noclip
-_G.AutoServerhop = savedSettings.AutoServerhop
-serverhopInterval = savedSettings.ServerhopInterval
-
--- ==================== ANIMATIONS HELPER ====================
-local function CreateTween(obj, props, duration, easing, direction)
-    local tweenInfo = TweenInfo.new(
-        duration or 0.3,
-        easing or Enum.EasingStyle.Quart,
-        direction or Enum.EasingDirection.Out
-    )
-    local tween = TweenService:Create(obj, tweenInfo, props)
-    tween:Play()
-    return tween
+-- ==================== TEAM JOIN ====================
+local function JoinTeam(team)
+    pcall(function()
+        if ReplicatedStorage:FindFirstChild("Remotes") and ReplicatedStorage.Remotes:FindFirstChild("CommF_") then
+            ReplicatedStorage.Remotes.CommF_:InvokeServer("SetTeam", team)
+        end
+    end)
 end
 
--- ==================== CUSTOM UI ====================
+-- ==================== TWEEN HELPER ====================
+local function Tween(obj, props, dur)
+    local t = TweenService:Create(obj, TweenInfo.new(dur or 0.3, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), props)
+    t:Play(); return t
+end
+
+-- ==================== UI ====================
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "ChestFruitFarmUI"
-ScreenGui.Parent = CoreGui
-ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-ScreenGui.ResetOnSpawn = false
+ScreenGui.Name = "ChestFruitFarmUI"; ScreenGui.Parent = CoreGui
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling; ScreenGui.ResetOnSpawn = false
 
--- Hauptfenster
 local MainFrame = Instance.new("Frame")
-MainFrame.Name = "MainFrame"
-MainFrame.Size = UDim2.new(0, 320, 0, 520)
-MainFrame.Position = UDim2.new(0.5, -160, 0.5, -260)
-MainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 25)
-MainFrame.BorderSizePixel = 0
-MainFrame.Active = true
-MainFrame.Draggable = true
-MainFrame.ClipsDescendants = true
-MainFrame.Parent = ScreenGui
+MainFrame.Size = UDim2.new(0, 340, 0, 560); MainFrame.Position = UDim2.new(0.5, -170, 0.5, -280)
+MainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 25); MainFrame.BorderSizePixel = 0
+MainFrame.Active = true; MainFrame.Draggable = true; MainFrame.ClipsDescendants = true; MainFrame.Parent = ScreenGui
+Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 10)
 
-local MainCorner = Instance.new("UICorner")
-MainCorner.CornerRadius = UDim.new(0, 10)
-MainCorner.Parent = MainFrame
+-- Gradient Top Bar
+local TopGradient = Instance.new("Frame")
+TopGradient.Size = UDim2.new(1, 0, 0, 3); TopGradient.BackgroundColor3 = Color3.fromRGB(80, 130, 255)
+TopGradient.BorderSizePixel = 0; TopGradient.ZIndex = 15; TopGradient.Parent = MainFrame
+Instance.new("UICorner", TopGradient).CornerRadius = UDim.new(0, 10)
 
--- Schließen Button mit X
-local CloseButton = Instance.new("TextButton")
-CloseButton.Size = UDim2.new(0, 30, 0, 30)
-CloseButton.Position = UDim2.new(1, -36, 0, 8)
-CloseButton.BackgroundColor3 = Color3.fromRGB(255, 60, 60)
-CloseButton.BorderSizePixel = 0
-CloseButton.Text = "X"
-CloseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-CloseButton.TextSize = 18
-CloseButton.Font = Enum.Font.GothamBold
-CloseButton.ZIndex = 10
-CloseButton.Parent = MainFrame
+-- Close Button
+local CloseBtn = Instance.new("TextButton")
+CloseBtn.Size = UDim2.new(0, 28, 0, 28); CloseBtn.Position = UDim2.new(1, -34, 0, 8)
+CloseBtn.BackgroundColor3 = Color3.fromRGB(255, 60, 60); CloseBtn.BorderSizePixel = 0
+CloseBtn.Text = "✕"; CloseBtn.TextColor3 = Color3.fromRGB(255,255,255); CloseBtn.TextSize = 16
+CloseBtn.Font = Enum.Font.GothamBold; CloseBtn.ZIndex = 10; CloseBtn.Parent = MainFrame
+Instance.new("UICorner", CloseBtn).CornerRadius = UDim.new(0, 8)
 
-local CloseCorner = Instance.new("UICorner")
-CloseCorner.CornerRadius = UDim.new(0, 8)
-CloseCorner.Parent = CloseButton
-
-CloseButton.MouseEnter:Connect(function()
-    CreateTween(CloseButton, {BackgroundColor3 = Color3.fromRGB(255, 80, 80)}, 0.15)
-end)
-
-CloseButton.MouseLeave:Connect(function()
-    CreateTween(CloseButton, {BackgroundColor3 = Color3.fromRGB(255, 60, 60)}, 0.15)
-end)
-
-CloseButton.MouseButton1Click:Connect(function()
-    if isAnimating then return end
-    isAnimating = true
-    
-    _G.ChestFarm = false
-    _G.ChestESP = false
-    _G.FruitESP = false
-    _G.AutoFruit = false
-    _G.AutoServerhop = false
-    noclipActive = false
-    if currentTween then
-        pcall(function() currentTween:Cancel() end)
-        currentTween = nil
-    end
-    
+CloseBtn.MouseButton1Click:Connect(function()
+    if isAnimating then return end; isAnimating = true
+    _G.ChestFarm=false; _G.ChestESP=false; _G.FruitESP=false; _G.AutoFruit=false; _G.AutoServerhop=false; noclipActive=false
+    if currentTween then pcall(function() currentTween:Cancel() end); currentTween=nil end
     SaveSettings()
-    
-    local shrinkTween = CreateTween(MainFrame, {
-        Size = UDim2.new(0, 0, 0, 0),
-        Position = UDim2.new(0.5, 0, 0.5, 0)
-    }, 0.25, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
-    
-    shrinkTween.Completed:Connect(function()
-        ScreenGui:Destroy()
-        isAnimating = false
-    end)
+    for _,d in pairs(espObjects) do if d.BB then d.BB:Destroy() end end; espObjects={}
+    for _,d in pairs(fruitEspObjects) do if d.BB then d.BB:Destroy() end end; fruitEspObjects={}
+    Tween(MainFrame, {Size=UDim2.new(0,0,0,0), Position=UDim2.new(0.5,0,0.5,0)}, 0.25).Completed:Connect(function() ScreenGui:Destroy() end)
 end)
 
--- Minimieren Button
-local MinimizeButton = Instance.new("TextButton")
-MinimizeButton.Size = UDim2.new(0, 30, 0, 30)
-MinimizeButton.Position = UDim2.new(1, -70, 0, 8)
-MinimizeButton.BackgroundColor3 = Color3.fromRGB(255, 170, 0)
-MinimizeButton.BorderSizePixel = 0
-MinimizeButton.Text = "—"
-MinimizeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-MinimizeButton.TextSize = 18
-MinimizeButton.Font = Enum.Font.GothamBold
-MinimizeButton.ZIndex = 10
-MinimizeButton.Parent = MainFrame
+-- Minimize
+local MinBtn = Instance.new("TextButton")
+MinBtn.Size = UDim2.new(0, 28, 0, 28); MinBtn.Position = UDim2.new(1, -66, 0, 8)
+MinBtn.BackgroundColor3 = Color3.fromRGB(255, 170, 0); MinBtn.BorderSizePixel = 0
+MinBtn.Text = "—"; MinBtn.TextColor3 = Color3.fromRGB(255,255,255); MinBtn.TextSize = 16
+MinBtn.Font = Enum.Font.GothamBold; MinBtn.ZIndex = 10; MinBtn.Parent = MainFrame
+Instance.new("UICorner", MinBtn).CornerRadius = UDim.new(0, 8)
 
-local MinimizeCorner = Instance.new("UICorner")
-MinimizeCorner.CornerRadius = UDim.new(0, 8)
-MinimizeCorner.Parent = MinimizeButton
-
-MinimizeButton.MouseEnter:Connect(function()
-    CreateTween(MinimizeButton, {BackgroundColor3 = Color3.fromRGB(255, 190, 30)}, 0.15)
+MinBtn.MouseButton1Click:Connect(function()
+    if isAnimating then return end; isAnimating=true; minimized=not minimized
+    Tween(MainFrame, {Size=minimized and UDim2.new(0,340,0,45) or UDim2.new(0,340,0,560)}, 0.3); task.wait(0.3); isAnimating=false
 end)
 
-MinimizeButton.MouseLeave:Connect(function()
-    CreateTween(MinimizeButton, {BackgroundColor3 = Color3.fromRGB(255, 170, 0)}, 0.15)
-end)
-
-MinimizeButton.MouseButton1Click:Connect(function()
-    if isAnimating then return end
-    isAnimating = true
-    minimized = not minimized
-    
-    if minimized then
-        CreateTween(MainFrame, {Size = UDim2.new(0, 320, 0, 45)}, 0.3, Enum.EasingStyle.Quart)
-        task.wait(0.3)
-    else
-        CreateTween(MainFrame, {Size = UDim2.new(0, 320, 0, 520)}, 0.3, Enum.EasingStyle.Quart)
-        task.wait(0.3)
-    end
-    isAnimating = false
-end)
-
--- Titel-Leiste
+-- Title
 local TitleBar = Instance.new("Frame")
-TitleBar.Name = "TitleBar"
-TitleBar.Size = UDim2.new(1, 0, 0, 45)
-TitleBar.BackgroundColor3 = Color3.fromRGB(20, 20, 35)
-TitleBar.BorderSizePixel = 0
-TitleBar.ZIndex = 5
-TitleBar.Parent = MainFrame
-
-local TitleCorner = Instance.new("UICorner")
-TitleCorner.CornerRadius = UDim.new(0, 10)
-TitleCorner.Parent = TitleBar
-
+TitleBar.Size = UDim2.new(1,0,0,45); TitleBar.BackgroundColor3 = Color3.fromRGB(20,20,35); TitleBar.BorderSizePixel = 0; TitleBar.ZIndex = 5; TitleBar.Parent = MainFrame
 local TitleText = Instance.new("TextLabel")
-TitleText.Size = UDim2.new(1, -80, 1, 0)
-TitleText.Position = UDim2.new(0, 15, 0, 0)
-TitleText.BackgroundTransparency = 1
-TitleText.Text = "⚡ Chest & Fruit Farm"
-TitleText.TextColor3 = Color3.fromRGB(255, 255, 255)
-TitleText.TextSize = 16
-TitleText.Font = Enum.Font.GothamBlack
-TitleText.TextXAlignment = Enum.TextXAlignment.Left
-TitleText.ZIndex = 6
-TitleText.Parent = TitleBar
+TitleText.Size = UDim2.new(1,-80,1,0); TitleText.Position = UDim2.new(0,15,0,0); TitleText.BackgroundTransparency = 1
+TitleText.Text = "⚡ Chest & Fruit Farm BETA"; TitleText.TextColor3 = Color3.fromRGB(255,255,255)
+TitleText.TextSize = 15; TitleText.Font = Enum.Font.GothamBlack; TitleText.TextXAlignment = Enum.TextXAlignment.Left; TitleText.ZIndex = 6; TitleText.Parent = TitleBar
 
 -- Tabs
 local TabFrame = Instance.new("Frame")
-TabFrame.Size = UDim2.new(1, 0, 0, 42)
-TabFrame.Position = UDim2.new(0, 0, 0, 45)
-TabFrame.BackgroundColor3 = Color3.fromRGB(18, 18, 30)
-TabFrame.BorderSizePixel = 0
-TabFrame.ZIndex = 5
-TabFrame.Parent = MainFrame
+TabFrame.Size = UDim2.new(1,0,0,38); TabFrame.Position = UDim2.new(0,0,0,45); TabFrame.BackgroundColor3 = Color3.fromRGB(18,18,30)
+TabFrame.BorderSizePixel = 0; TabFrame.ZIndex = 5; TabFrame.Parent = MainFrame
 
--- Tab Slider
 local TabSlider = Instance.new("Frame")
-TabSlider.Size = UDim2.new(0.25, -4, 0, 3)
-TabSlider.Position = UDim2.new(0, 3, 1, -3)
-TabSlider.BackgroundColor3 = Color3.fromRGB(80, 130, 255)
-TabSlider.BorderSizePixel = 0
-TabSlider.ZIndex = 7
-TabSlider.Parent = TabFrame
+TabSlider.Size = UDim2.new(0.2,-4,0,3); TabSlider.Position = UDim2.new(0,3,1,-3)
+TabSlider.BackgroundColor3 = Color3.fromRGB(80,130,255); TabSlider.BorderSizePixel = 0; TabSlider.ZIndex = 7; TabSlider.Parent = TabFrame
+Instance.new("UICorner", TabSlider).CornerRadius = UDim.new(0,2)
 
-local TabSliderCorner = Instance.new("UICorner")
-TabSliderCorner.CornerRadius = UDim.new(0, 2)
-TabSliderCorner.Parent = TabSlider
+local function MakeTab(name, x)
+    local b = Instance.new("TextButton"); b.Size = UDim2.new(0.2,-4,1,-4); b.Position = UDim2.new(x, 2, 0, 2)
+    b.BackgroundColor3 = Color3.fromRGB(25,25,40); b.BorderSizePixel = 0; b.Text = name
+    b.TextColor3 = Color3.fromRGB(150,150,170); b.TextSize = 11; b.Font = Enum.Font.GothamBold; b.ZIndex = 6; b.Parent = TabFrame
+    Instance.new("UICorner", b).CornerRadius = UDim.new(0,6); return b
+end
 
-local TabSliderGlow = Instance.new("Frame")
-TabSliderGlow.Size = UDim2.new(0.25, 0, 0, 8)
-TabSliderGlow.Position = UDim2.new(0, 1, 1, -5)
-TabSliderGlow.BackgroundColor3 = Color3.fromRGB(80, 130, 255)
-TabSliderGlow.BackgroundTransparency = 0.6
-TabSliderGlow.BorderSizePixel = 0
-TabSliderGlow.ZIndex = 6
-TabSliderGlow.Parent = TabFrame
+local MainTab = MakeTab("Main", 0); MainTab.BackgroundColor3 = Color3.fromRGB(35,35,60); MainTab.TextColor3 = Color3.fromRGB(255,255,255)
+local FruitTab = MakeTab("Fruits", 0.2); local ServerTab = MakeTab("Server", 0.4)
+local TeamTab = MakeTab("Team", 0.6); local SetTab = MakeTab("Set", 0.8)
 
-local TabSliderGlowCorner = Instance.new("UICorner")
-TabSliderGlowCorner.CornerRadius = UDim.new(0, 4)
-TabSliderGlowCorner.Parent = TabSliderGlow
-
--- Tab Buttons (4 Tabs jetzt)
-local MainTab = Instance.new("TextButton")
-MainTab.Size = UDim2.new(0.25, -4, 1, -4)
-MainTab.Position = UDim2.new(0, 3, 0, 2)
-MainTab.BackgroundColor3 = Color3.fromRGB(35, 35, 60)
-MainTab.BorderSizePixel = 0
-MainTab.Text = "Main"
-MainTab.TextColor3 = Color3.fromRGB(255, 255, 255)
-MainTab.TextSize = 11
-MainTab.Font = Enum.Font.GothamBold
-MainTab.ZIndex = 6
-MainTab.Parent = TabFrame
-
-local MainTabCorner = Instance.new("UICorner")
-MainTabCorner.CornerRadius = UDim.new(0, 6)
-MainTabCorner.Parent = MainTab
-
-local FruitTab = Instance.new("TextButton")
-FruitTab.Size = UDim2.new(0.25, -4, 1, -4)
-FruitTab.Position = UDim2.new(0.25, 2, 0, 2)
-FruitTab.BackgroundColor3 = Color3.fromRGB(25, 25, 40)
-FruitTab.BorderSizePixel = 0
-FruitTab.Text = "Fruits"
-FruitTab.TextColor3 = Color3.fromRGB(150, 150, 170)
-FruitTab.TextSize = 11
-FruitTab.Font = Enum.Font.GothamBold
-FruitTab.ZIndex = 6
-FruitTab.Parent = TabFrame
-
-local FruitTabCorner = Instance.new("UICorner")
-FruitTabCorner.CornerRadius = UDim.new(0, 6)
-FruitTabCorner.Parent = FruitTab
-
-local ServerhopTab = Instance.new("TextButton")
-ServerhopTab.Size = UDim2.new(0.25, -4, 1, -4)
-ServerhopTab.Position = UDim2.new(0.5, 1, 0, 2)
-ServerhopTab.BackgroundColor3 = Color3.fromRGB(25, 25, 40)
-ServerhopTab.BorderSizePixel = 0
-ServerhopTab.Text = "Server"
-ServerhopTab.TextColor3 = Color3.fromRGB(150, 150, 170)
-ServerhopTab.TextSize = 11
-ServerhopTab.Font = Enum.Font.GothamBold
-ServerhopTab.ZIndex = 6
-ServerhopTab.Parent = TabFrame
-
-local ServerhopTabCorner = Instance.new("UICorner")
-ServerhopTabCorner.CornerRadius = UDim.new(0, 6)
-ServerhopTabCorner.Parent = ServerhopTab
-
-local SettingsTab = Instance.new("TextButton")
-SettingsTab.Size = UDim2.new(0.25, -4, 1, -4)
-SettingsTab.Position = UDim2.new(0.75, 1, 0, 2)
-SettingsTab.BackgroundColor3 = Color3.fromRGB(25, 25, 40)
-SettingsTab.BorderSizePixel = 0
-SettingsTab.Text = "Set"
-SettingsTab.TextColor3 = Color3.fromRGB(150, 150, 170)
-SettingsTab.TextSize = 11
-SettingsTab.Font = Enum.Font.GothamBold
-SettingsTab.ZIndex = 6
-SettingsTab.Parent = TabFrame
-
-local SettingsTabCorner = Instance.new("UICorner")
-SettingsTabCorner.CornerRadius = UDim.new(0, 6)
-SettingsTabCorner.Parent = SettingsTab
-
--- Content Bereiche
+-- Content
 local ContentFrame = Instance.new("Frame")
-ContentFrame.Size = UDim2.new(1, 0, 1, -92)
-ContentFrame.Position = UDim2.new(0, 0, 0, 89)
-ContentFrame.BackgroundTransparency = 1
-ContentFrame.ClipsDescendants = true
-ContentFrame.ZIndex = 5
-ContentFrame.Parent = MainFrame
+ContentFrame.Size = UDim2.new(1,0,1,-88); ContentFrame.Position = UDim2.new(0,0,0,85); ContentFrame.BackgroundTransparency = 1
+ContentFrame.ClipsDescendants = true; ContentFrame.ZIndex = 5; ContentFrame.Parent = MainFrame
 
-local MainContent = Instance.new("ScrollingFrame")
-MainContent.Size = UDim2.new(1, 0, 1, 0)
-MainContent.Position = UDim2.new(0, 0, 0, 0)
-MainContent.BackgroundTransparency = 1
-MainContent.BorderSizePixel = 0
-MainContent.ScrollBarThickness = 4
-MainContent.ScrollBarImageColor3 = Color3.fromRGB(80, 80, 100)
-MainContent.CanvasSize = UDim2.new(0, 0, 0, 500)
-MainContent.ZIndex = 5
-MainContent.Parent = ContentFrame
+local function MakePage()
+    local p = Instance.new("ScrollingFrame"); p.Size = UDim2.new(1,0,1,0); p.BackgroundTransparency = 1; p.BorderSizePixel = 0
+    p.ScrollBarThickness = 3; p.ScrollBarImageColor3 = Color3.fromRGB(80,80,100); p.CanvasSize = UDim2.new(0,0,0,600); p.ZIndex = 5; p.Parent = ContentFrame
+    local l = Instance.new("UIListLayout"); l.Padding = UDim.new(0,5); l.Parent = p
+    local pad = Instance.new("UIPadding"); pad.PaddingLeft=UDim.new(0,10); pad.PaddingRight=UDim.new(0,10); pad.PaddingTop=UDim.new(0,6); pad.Parent = p
+    l:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function() p.CanvasSize = UDim2.new(0,0,0,l.AbsoluteContentSize.Y+10) end)
+    return p
+end
 
-local FruitContent = Instance.new("ScrollingFrame")
-FruitContent.Size = UDim2.new(1, 0, 1, 0)
-FruitContent.Position = UDim2.new(1, 0, 0, 0)
-FruitContent.BackgroundTransparency = 1
-FruitContent.BorderSizePixel = 0
-FruitContent.ScrollBarThickness = 4
-FruitContent.ScrollBarImageColor3 = Color3.fromRGB(80, 80, 100)
-FruitContent.CanvasSize = UDim2.new(0, 0, 0, 500)
-FruitContent.ZIndex = 5
-FruitContent.Parent = ContentFrame
+local MainPage = MakePage(); MainPage.Position = UDim2.new(0,0,0,0)
+local FruitPage = MakePage(); FruitPage.Position = UDim2.new(1,0,0,0)
+local ServerPage = MakePage(); ServerPage.Position = UDim2.new(2,0,0,0)
+local TeamPage = MakePage(); TeamPage.Position = UDim2.new(3,0,0,0)
+local SetPage = MakePage(); SetPage.Position = UDim2.new(4,0,0,0)
 
-local ServerhopContent = Instance.new("ScrollingFrame")
-ServerhopContent.Size = UDim2.new(1, 0, 1, 0)
-ServerhopContent.Position = UDim2.new(2, 0, 0, 0)
-ServerhopContent.BackgroundTransparency = 1
-ServerhopContent.BorderSizePixel = 0
-ServerhopContent.ScrollBarThickness = 4
-ServerhopContent.ScrollBarImageColor3 = Color3.fromRGB(80, 80, 100)
-ServerhopContent.CanvasSize = UDim2.new(0, 0, 0, 500)
-ServerhopContent.ZIndex = 5
-ServerhopContent.Parent = ContentFrame
-
-local SettingsContent = Instance.new("ScrollingFrame")
-SettingsContent.Size = UDim2.new(1, 0, 1, 0)
-SettingsContent.Position = UDim2.new(3, 0, 0, 0)
-SettingsContent.BackgroundTransparency = 1
-SettingsContent.BorderSizePixel = 0
-SettingsContent.ScrollBarThickness = 4
-SettingsContent.ScrollBarImageColor3 = Color3.fromRGB(80, 80, 100)
-SettingsContent.CanvasSize = UDim2.new(0, 0, 0, 500)
-SettingsContent.ZIndex = 5
-SettingsContent.Parent = ContentFrame
-
--- UIList Layouts
-local MainList = Instance.new("UIListLayout")
-MainList.Padding = UDim.new(0, 6)
-MainList.Parent = MainContent
-
-local FruitList = Instance.new("UIListLayout")
-FruitList.Padding = UDim.new(0, 6)
-FruitList.Parent = FruitContent
-
-local ServerhopList = Instance.new("UIListLayout")
-ServerhopList.Padding = UDim.new(0, 6)
-ServerhopList.Parent = ServerhopContent
-
-local SettingsList = Instance.new("UIListLayout")
-SettingsList.Padding = UDim.new(0, 6)
-SettingsList.Parent = SettingsContent
-
--- Padding
-local MainPadding = Instance.new("UIPadding")
-MainPadding.PaddingLeft = UDim.new(0, 12)
-MainPadding.PaddingRight = UDim.new(0, 12)
-MainPadding.PaddingTop = UDim.new(0, 8)
-MainPadding.Parent = MainContent
-
-local FruitPadding = Instance.new("UIPadding")
-FruitPadding.PaddingLeft = UDim.new(0, 12)
-FruitPadding.PaddingRight = UDim.new(0, 12)
-FruitPadding.PaddingTop = UDim.new(0, 8)
-FruitPadding.Parent = FruitContent
-
-local ServerhopPadding = Instance.new("UIPadding")
-ServerhopPadding.PaddingLeft = UDim.new(0, 12)
-ServerhopPadding.PaddingRight = UDim.new(0, 12)
-ServerhopPadding.PaddingTop = UDim.new(0, 8)
-ServerhopPadding.Parent = ServerhopContent
-
-local SettingsPadding = Instance.new("UIPadding")
-SettingsPadding.PaddingLeft = UDim.new(0, 12)
-SettingsPadding.PaddingRight = UDim.new(0, 12)
-SettingsPadding.PaddingTop = UDim.new(0, 8)
-SettingsPadding.Parent = SettingsContent
-
--- ==================== TAB SWITCHING (4 TABS) ====================
+-- Tab Switch
 local function SwitchTab(tab)
-    if isAnimating or currentTab == tab then return end
-    isAnimating = true
-    currentTab = tab
-    
-    local sliderTargetPos, glowTargetPos, sliderColor
-    local tabIndex = 0
-    
-    if tab == "Main" then
-        tabIndex = 0
-        sliderTargetPos = UDim2.new(0, 3, 1, -3)
-        glowTargetPos = UDim2.new(0, 1, 1, -5)
-        sliderColor = Color3.fromRGB(80, 130, 255)
-    elseif tab == "Fruit" then
-        tabIndex = 1
-        sliderTargetPos = UDim2.new(0.25, 2, 1, -3)
-        glowTargetPos = UDim2.new(0.25, 0, 1, -5)
-        sliderColor = Color3.fromRGB(255, 150, 50)
-    elseif tab == "Server" then
-        tabIndex = 2
-        sliderTargetPos = UDim2.new(0.5, 1, 1, -3)
-        glowTargetPos = UDim2.new(0.5, -1, 1, -5)
-        sliderColor = Color3.fromRGB(0, 200, 200)
-    else
-        tabIndex = 3
-        sliderTargetPos = UDim2.new(0.75, 1, 1, -3)
-        glowTargetPos = UDim2.new(0.75, -1, 1, -5)
-        sliderColor = Color3.fromRGB(150, 80, 255)
-    end
-    
-    CreateTween(TabSlider, {Position = sliderTargetPos, BackgroundColor3 = sliderColor}, 0.3, Enum.EasingStyle.Quart)
-    CreateTween(TabSliderGlow, {Position = glowTargetPos, BackgroundColor3 = sliderColor}, 0.3, Enum.EasingStyle.Quart)
-    
-    local offset = -tabIndex
-    CreateTween(MainContent, {Position = UDim2.new(offset, 0, 0, 0)}, 0.35, Enum.EasingStyle.Quart)
-    CreateTween(FruitContent, {Position = UDim2.new(1 + offset, 0, 0, 0)}, 0.35, Enum.EasingStyle.Quart)
-    CreateTween(ServerhopContent, {Position = UDim2.new(2 + offset, 0, 0, 0)}, 0.35, Enum.EasingStyle.Quart)
-    CreateTween(SettingsContent, {Position = UDim2.new(3 + offset, 0, 0, 0)}, 0.35, Enum.EasingStyle.Quart)
-    
-    CreateTween(MainTab, {BackgroundColor3 = tab == "Main" and Color3.fromRGB(35, 35, 60) or Color3.fromRGB(25, 25, 40), TextColor3 = tab == "Main" and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(150, 150, 170)}, 0.2)
-    CreateTween(FruitTab, {BackgroundColor3 = tab == "Fruit" and Color3.fromRGB(35, 35, 60) or Color3.fromRGB(25, 25, 40), TextColor3 = tab == "Fruit" and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(150, 150, 170)}, 0.2)
-    CreateTween(ServerhopTab, {BackgroundColor3 = tab == "Server" and Color3.fromRGB(35, 35, 60) or Color3.fromRGB(25, 25, 40), TextColor3 = tab == "Server" and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(150, 150, 170)}, 0.2)
-    CreateTween(SettingsTab, {BackgroundColor3 = tab == "Settings" and Color3.fromRGB(35, 35, 60) or Color3.fromRGB(25, 25, 40), TextColor3 = tab == "Settings" and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(150, 150, 170)}, 0.2)
-    
-    task.delay(0.35, function()
-        isAnimating = false
-    end)
+    if isAnimating or currentTab==tab then return end; isAnimating=true; currentTab=tab
+    local idx = ({Main=0,Fruit=1,Server=2,Team=3,Settings=4})[tab] or 0
+    local cols = {Color3.fromRGB(80,130,255),Color3.fromRGB(255,150,50),Color3.fromRGB(0,200,200),Color3.fromRGB(0,180,100),Color3.fromRGB(150,80,255)}
+    local x = idx*0.2
+    Tween(TabSlider, {Position=UDim2.new(x,3-idx,1,-3),BackgroundColor3=cols[idx+1]}, 0.3)
+    local off = -idx
+    Tween(MainPage, {Position=UDim2.new(off,0,0,0)}, 0.35); Tween(FruitPage, {Position=UDim2.new(1+off,0,0,0)}, 0.35)
+    Tween(ServerPage, {Position=UDim2.new(2+off,0,0,0)}, 0.35); Tween(TeamPage, {Position=UDim2.new(3+off,0,0,0)}, 0.35)
+    Tween(SetPage, {Position=UDim2.new(4+off,0,0,0)}, 0.35)
+    local tabs = {MainTab,FruitTab,ServerTab,TeamTab,SetTab}
+    for i,t in pairs(tabs) do local a=i==idx+1; Tween(t,{BackgroundColor3=a and Color3.fromRGB(35,35,60) or Color3.fromRGB(25,25,40),TextColor3=a and Color3.fromRGB(255,255,255) or Color3.fromRGB(150,150,170)},0.2) end
+    task.delay(0.35, function() isAnimating=false end)
 end
 
 MainTab.MouseButton1Click:Connect(function() SwitchTab("Main") end)
 FruitTab.MouseButton1Click:Connect(function() SwitchTab("Fruit") end)
-ServerhopTab.MouseButton1Click:Connect(function() SwitchTab("Server") end)
-SettingsTab.MouseButton1Click:Connect(function() SwitchTab("Settings") end)
+ServerTab.MouseButton1Click:Connect(function() SwitchTab("Server") end)
+TeamTab.MouseButton1Click:Connect(function() SwitchTab("Team") end)
+SetTab.MouseButton1Click:Connect(function() SwitchTab("Settings") end)
 
--- ==================== UI ELEMENTE ERSTELLEN ====================
-local function CreateSection(parent, name)
-    local section = Instance.new("Frame")
-    section.Size = UDim2.new(1, 0, 0, 30)
-    section.BackgroundColor3 = Color3.fromRGB(35, 35, 55)
-    section.BorderSizePixel = 0
-    section.Parent = parent
-    
-    local sectionCorner = Instance.new("UICorner")
-    sectionCorner.CornerRadius = UDim.new(0, 5)
-    sectionCorner.Parent = section
-    
-    local sectionText = Instance.new("TextLabel")
-    sectionText.Size = UDim2.new(1, -10, 1, 0)
-    sectionText.Position = UDim2.new(0, 10, 0, 0)
-    sectionText.BackgroundTransparency = 1
-    sectionText.Text = name
-    sectionText.TextColor3 = Color3.fromRGB(200, 200, 230)
-    sectionText.TextSize = 13
-    sectionText.Font = Enum.Font.GothamBold
-    sectionText.TextXAlignment = Enum.TextXAlignment.Left
-    sectionText.Parent = section
-    
-    return section
+-- ==================== UI ELEMENTS ====================
+local function AddSection(p, n, col)
+    local s = Instance.new("Frame"); s.Size=UDim2.new(1,0,0,28); s.BackgroundColor3=col or Color3.fromRGB(35,35,55); s.BorderSizePixel=0; s.Parent=p
+    Instance.new("UICorner",s).CornerRadius=UDim.new(0,5)
+    local t = Instance.new("TextLabel"); t.Size=UDim2.new(1,-10,1,0); t.Position=UDim2.new(0,10,0,0); t.BackgroundTransparency=1
+    t.Text=n; t.TextColor3=Color3.fromRGB(200,200,230); t.TextSize=12; t.Font=Enum.Font.GothamBold; t.TextXAlignment=Enum.TextXAlignment.Left; t.Parent=s
+    return s
 end
 
-local function CreateToggle(parent, name, default, callback)
-    local toggleFrame = Instance.new("Frame")
-    toggleFrame.Size = UDim2.new(1, 0, 0, 40)
-    toggleFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 40)
-    toggleFrame.BorderSizePixel = 0
-    toggleFrame.Parent = parent
+local function AddToggle(p, n, d, cb)
+    local f = Instance.new("Frame"); f.Size=UDim2.new(1,0,0,38); f.BackgroundColor3=Color3.fromRGB(25,25,40); f.BorderSizePixel=0; f.Parent=p
+    Instance.new("UICorner",f).CornerRadius=UDim.new(0,5)
+    local txt = Instance.new("TextLabel"); txt.Size=UDim2.new(0.6,-10,1,0); txt.Position=UDim2.new(0,10,0,0); txt.BackgroundTransparency=1
+    txt.Text=n; txt.TextColor3=Color3.fromRGB(230,230,240); txt.TextSize=12; txt.Font=Enum.Font.Gotham; txt.TextXAlignment=Enum.TextXAlignment.Left; txt.Parent=f
+    local btn = Instance.new("Frame"); btn.Size=UDim2.new(0,44,0,22); btn.Position=UDim2.new(1,-52,0.5,-11)
+    btn.BackgroundColor3=d and Color3.fromRGB(0,180,90) or Color3.fromRGB(60,60,80); btn.BorderSizePixel=0; btn.Parent=f
+    Instance.new("UICorner",btn).CornerRadius=UDim.new(1,0)
+    local dot = Instance.new("Frame"); dot.Size=UDim2.new(0,18,0,18); dot.Position=d and UDim2.new(1,-20,0.5,-9) or UDim2.new(0,2,0.5,-9)
+    dot.BackgroundColor3=Color3.fromRGB(255,255,255); dot.BorderSizePixel=0; dot.Parent=btn; Instance.new("UICorner",dot).CornerRadius=UDim.new(1,0)
+    local on = d
+    local function up()
+        Tween(btn,{BackgroundColor3=on and Color3.fromRGB(0,180,90) or Color3.fromRGB(60,60,80)},0.2)
+        Tween(dot,{Position=on and UDim2.new(1,-20,0.5,-9) or UDim2.new(0,2,0.5,-9)},0.2)
+    end
+    f.InputBegan:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 then on=not on; up(); pcall(cb,on) end end)
+    f.MouseEnter:Connect(function() Tween(f,{BackgroundColor3=Color3.fromRGB(32,32,50)},0.15) end)
+    f.MouseLeave:Connect(function() Tween(f,{BackgroundColor3=Color3.fromRGB(25,25,40)},0.15) end)
+    return f
+end
+
+local function AddLabel(p, t, col)
+    local f = Instance.new("Frame"); f.Size=UDim2.new(1,0,0,28); f.BackgroundColor3=Color3.fromRGB(25,25,40); f.BorderSizePixel=0; f.Parent=p
+    Instance.new("UICorner",f).CornerRadius=UDim.new(0,5)
+    local d = Instance.new("Frame"); d.Size=UDim2.new(0,7,0,7); d.Position=UDim2.new(0,8,0.5,-3); d.BackgroundColor3=col or Color3.fromRGB(0,255,100); d.BorderSizePixel=0; d.Parent=f
+    Instance.new("UICorner",d).CornerRadius=UDim.new(1,0)
+    local l = Instance.new("TextLabel"); l.Size=UDim2.new(1,-22,1,0); l.Position=UDim2.new(0,18,0,0); l.BackgroundTransparency=1
+    l.Text=t; l.TextColor3=Color3.fromRGB(200,200,220); l.TextSize=11; l.Font=Enum.Font.Gotham; l.TextXAlignment=Enum.TextXAlignment.Left; l.Parent=f
+    return l, d
+end
+
+local function AddButton(p, t, col, cb)
+    local b = Instance.new("TextButton"); b.Size=UDim2.new(1,0,0,34); b.BackgroundColor3=col or Color3.fromRGB(50,50,80); b.BorderSizePixel=0
+    b.Text=t; b.TextColor3=Color3.fromRGB(255,255,255); b.TextSize=13; b.Font=Enum.Font.GothamBold; b.Parent=p
+    Instance.new("UICorner",b).CornerRadius=UDim.new(0,5); b.MouseButton1Click:Connect(cb)
+    b.MouseEnter:Connect(function() Tween(b,{BackgroundColor3=Color3.fromRGB(80,80,120)},0.15) end)
+    b.MouseLeave:Connect(function() Tween(b,{BackgroundColor3=col or Color3.fromRGB(50,50,80)},0.15) end)
+end
+
+local function AddSlider(p, n, min, max, val, cb)
+    local f = Instance.new("Frame"); f.Size=UDim2.new(1,0,0,60); f.BackgroundColor3=Color3.fromRGB(25,25,40); f.BorderSizePixel=0; f.Parent=p
+    Instance.new("UICorner",f).CornerRadius=UDim.new(0,5)
+    local txt = Instance.new("TextLabel"); txt.Size=UDim2.new(1,-20,0,20); txt.Position=UDim2.new(0,10,0,2); txt.BackgroundTransparency=1
+    txt.Text=n..": "..val; txt.TextColor3=Color3.fromRGB(230,230,240); txt.TextSize=12; txt.Font=Enum.Font.Gotham; txt.TextXAlignment=Enum.TextXAlignment.Left; txt.Parent=f
+    local sliderFrame = Instance.new("Frame"); sliderFrame.Size=UDim2.new(1,-20,0,6); sliderFrame.Position=UDim2.new(0,10,0,30)
+    sliderFrame.BackgroundColor3=Color3.fromRGB(60,60,80); sliderFrame.BorderSizePixel=0; sliderFrame.Parent=f
+    Instance.new("UICorner",sliderFrame).CornerRadius=UDim.new(1,0)
+    local fill = Instance.new("Frame"); fill.Size=UDim2.new((val-min)/(max-min),0,1,0); fill.BackgroundColor3=Color3.fromRGB(80,130,255); fill.BorderSizePixel=0; fill.Parent=sliderFrame
+    Instance.new("UICorner",fill).CornerRadius=UDim.new(1,0)
+    local knob = Instance.new("TextButton"); knob.Size=UDim2.new(0,16,0,16); knob.Position=UDim2.new((val-min)/(max-min),-8,0.5,-8)
+    knob.BackgroundColor3=Color3.fromRGB(255,255,255); knob.BorderSizePixel=0; knob.Text=""; knob.Parent=sliderFrame
+    Instance.new("UICorner",knob).CornerRadius=UDim.new(1,0)
     
-    local toggleCorner = Instance.new("UICorner")
-    toggleCorner.CornerRadius = UDim.new(0, 5)
-    toggleCorner.Parent = toggleFrame
-    
-    local toggleText = Instance.new("TextLabel")
-    toggleText.Size = UDim2.new(0.65, -10, 1, 0)
-    toggleText.Position = UDim2.new(0, 10, 0, 0)
-    toggleText.BackgroundTransparency = 1
-    toggleText.Text = name
-    toggleText.TextColor3 = Color3.fromRGB(230, 230, 240)
-    toggleText.TextSize = 13
-    toggleText.Font = Enum.Font.Gotham
-    toggleText.TextXAlignment = Enum.TextXAlignment.Left
-    toggleText.Parent = toggleFrame
-    
-    local toggleButton = Instance.new("Frame")
-    toggleButton.Size = UDim2.new(0, 46, 0, 24)
-    toggleButton.Position = UDim2.new(1, -56, 0.5, -12)
-    toggleButton.BackgroundColor3 = default and Color3.fromRGB(0, 180, 90) or Color3.fromRGB(60, 60, 80)
-    toggleButton.BorderSizePixel = 0
-    toggleButton.Parent = toggleFrame
-    
-    local toggleButtonCorner = Instance.new("UICorner")
-    toggleButtonCorner.CornerRadius = UDim.new(1, 0)
-    toggleButtonCorner.Parent = toggleButton
-    
-    local toggleDot = Instance.new("Frame")
-    toggleDot.Size = UDim2.new(0, 20, 0, 20)
-    toggleDot.Position = default and UDim2.new(1, -22, 0.5, -10) or UDim2.new(0, 2, 0.5, -10)
-    toggleDot.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-    toggleDot.BorderSizePixel = 0
-    toggleDot.Parent = toggleButton
-    
-    local toggleDotCorner = Instance.new("UICorner")
-    toggleDotCorner.CornerRadius = UDim.new(1, 0)
-    toggleDotCorner.Parent = toggleDot
-    
-    local enabled = default
-    
-    local function updateVisual()
-        if enabled then
-            CreateTween(toggleButton, {BackgroundColor3 = Color3.fromRGB(0, 180, 90)}, 0.2)
-            CreateTween(toggleDot, {Position = UDim2.new(1, -22, 0.5, -10)}, 0.2, Enum.EasingStyle.Quart)
-        else
-            CreateTween(toggleButton, {BackgroundColor3 = Color3.fromRGB(60, 60, 80)}, 0.2)
-            CreateTween(toggleDot, {Position = UDim2.new(0, 2, 0.5, -10)}, 0.2, Enum.EasingStyle.Quart)
-        end
+    local dragging = false
+    local function updateKnob(input)
+        local relX = math.clamp((input.Position.X - sliderFrame.AbsolutePosition.X) / sliderFrame.AbsoluteSize.X, 0, 1)
+        local newVal = math.floor(min + relX * (max - min))
+        fill.Size = UDim2.new(relX, 0, 1, 0)
+        knob.Position = UDim2.new(relX, -8, 0.5, -8)
+        txt.Text = n..": "..newVal
+        pcall(cb, newVal)
     end
     
-    toggleFrame.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            enabled = not enabled
-            updateVisual()
-            pcall(callback, enabled)
-        end
-    end)
+    knob.MouseButton1Down:Connect(function() dragging = true end)
+    UserInputService.InputEnded:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end end)
+    UserInputService.InputChanged:Connect(function(i) if dragging and i.UserInputType == Enum.UserInputType.MouseMovement then updateKnob(i) end end)
+    sliderFrame.InputBegan:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 then updateKnob(i); dragging = true end end)
     
-    toggleFrame.MouseEnter:Connect(function()
-        CreateTween(toggleFrame, {BackgroundColor3 = Color3.fromRGB(32, 32, 50)}, 0.15)
-    end)
-    
-    toggleFrame.MouseLeave:Connect(function()
-        CreateTween(toggleFrame, {BackgroundColor3 = Color3.fromRGB(25, 25, 40)}, 0.15)
-    end)
-    
-    return toggleFrame
+    return f, txt
 end
 
-local function CreateLabel(parent, text)
-    local labelFrame = Instance.new("Frame")
-    labelFrame.Size = UDim2.new(1, 0, 0, 30)
-    labelFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 40)
-    labelFrame.BorderSizePixel = 0
-    labelFrame.Parent = parent
+local function AddDropdown(p, n, items, default, cb)
+    local f = Instance.new("Frame"); f.Size=UDim2.new(1,0,0,38); f.BackgroundColor3=Color3.fromRGB(25,25,40); f.BorderSizePixel=0; f.Parent=p
+    Instance.new("UICorner",f).CornerRadius=UDim.new(0,5)
+    local txt = Instance.new("TextLabel"); txt.Size=UDim2.new(0.5,-10,1,0); txt.Position=UDim2.new(0,10,0,0); txt.BackgroundTransparency=1
+    txt.Text=n; txt.TextColor3=Color3.fromRGB(230,230,240); txt.TextSize=12; txt.Font=Enum.Font.Gotham; txt.TextXAlignment=Enum.TextXAlignment.Left; txt.Parent=f
+    local selected = default or items[1]
+    local btn = Instance.new("TextButton"); btn.Size=UDim2.new(0.45,-10,0,28); btn.Position=UDim2.new(0.55,0,0.5,-14)
+    btn.BackgroundColor3=Color3.fromRGB(50,50,80); btn.BorderSizePixel=0; btn.Text=selected; btn.TextColor3=Color3.fromRGB(255,255,255); btn.TextSize=11; btn.Font=Enum.Font.Gotham; btn.Parent=f
+    Instance.new("UICorner",btn).CornerRadius=UDim.new(0,5)
     
-    local labelCorner = Instance.new("UICorner")
-    labelCorner.CornerRadius = UDim.new(0, 5)
-    labelCorner.Parent = labelFrame
+    local open = false
+    local dropFrame = Instance.new("Frame"); dropFrame.Size=UDim2.new(0.45,-10,0,#items*28); dropFrame.Position=UDim2.new(0.55,0,1,2)
+    dropFrame.BackgroundColor3=Color3.fromRGB(40,40,60); dropFrame.BorderSizePixel=0; dropFrame.Visible=false; dropFrame.ZIndex=20; dropFrame.Parent=f
+    Instance.new("UICorner",dropFrame).CornerRadius=UDim.new(0,5)
+    local dropList = Instance.new("UIListLayout"); dropList.Parent=dropFrame
     
-    local statusDot = Instance.new("Frame")
-    statusDot.Size = UDim2.new(0, 8, 0, 8)
-    statusDot.Position = UDim2.new(0, 10, 0.5, -4)
-    statusDot.BackgroundColor3 = Color3.fromRGB(0, 255, 100)
-    statusDot.BorderSizePixel = 0
-    statusDot.Parent = labelFrame
-    
-    local statusDotCorner = Instance.new("UICorner")
-    statusDotCorner.CornerRadius = UDim.new(1, 0)
-    statusDotCorner.Parent = statusDot
-    
-    local labelText = Instance.new("TextLabel")
-    labelText.Size = UDim2.new(1, -25, 1, 0)
-    labelText.Position = UDim2.new(0, 22, 0, 0)
-    labelText.BackgroundTransparency = 1
-    labelText.Text = text
-    labelText.TextColor3 = Color3.fromRGB(200, 200, 220)
-    labelText.TextSize = 12
-    labelText.Font = Enum.Font.Gotham
-    labelText.TextXAlignment = Enum.TextXAlignment.Left
-    labelText.Parent = labelFrame
-    
-    return labelText, statusDot
-end
-
-local function CreateButton(parent, text, callback)
-    local buttonFrame = Instance.new("TextButton")
-    buttonFrame.Size = UDim2.new(1, 0, 0, 36)
-    buttonFrame.BackgroundColor3 = Color3.fromRGB(50, 50, 80)
-    buttonFrame.BorderSizePixel = 0
-    buttonFrame.Text = text
-    buttonFrame.TextColor3 = Color3.fromRGB(255, 255, 255)
-    buttonFrame.TextSize = 14
-    buttonFrame.Font = Enum.Font.GothamBold
-    buttonFrame.Parent = parent
-    
-    local buttonCorner = Instance.new("UICorner")
-    buttonCorner.CornerRadius = UDim.new(0, 5)
-    buttonCorner.Parent = buttonFrame
-    
-    buttonFrame.MouseButton1Click:Connect(callback)
-    
-    buttonFrame.MouseEnter:Connect(function()
-        CreateTween(buttonFrame, {BackgroundColor3 = Color3.fromRGB(70, 70, 110)}, 0.15)
-    end)
-    
-    buttonFrame.MouseLeave:Connect(function()
-        CreateTween(buttonFrame, {BackgroundColor3 = Color3.fromRGB(50, 50, 80)}, 0.15)
-    end)
-    
-    return buttonFrame
-end
-
--- ==================== STATUS VARIABLEN ====================
-local statusLabel = nil
-local statusDot = nil
-local chestCountLabel = nil
-local fruitCountLabel = nil
-local timeoutLabel = nil
-local serverhopCountLabel = nil
-local totalChestsLabel = nil
-
-local function SetStatus(text, active)
-    if statusLabel then
-        statusLabel.Text = text
+    for _, item in pairs(items) do
+        local ibtn = Instance.new("TextButton"); ibtn.Size=UDim2.new(1,0,0,28); ibtn.BackgroundTransparency=1; ibtn.Text=item
+        ibtn.TextColor3=Color3.fromRGB(200,200,220); ibtn.TextSize=11; ibtn.Font=Enum.Font.Gotham; ibtn.ZIndex=21; ibtn.Parent=dropFrame
+        ibtn.MouseButton1Click:Connect(function() selected=item; btn.Text=item; dropFrame.Visible=false; open=false; pcall(cb, item) end)
+        ibtn.MouseEnter:Connect(function() Tween(ibtn,{BackgroundColor3=Color3.fromRGB(60,60,90)},0.1) end)
+        ibtn.MouseLeave:Connect(function() Tween(ibtn,{BackgroundTransparency=1},0.1) end)
     end
-    if statusDot then
-        if active then
-            CreateTween(statusDot, {BackgroundColor3 = Color3.fromRGB(0, 255, 100)}, 0.3)
-        else
-            CreateTween(statusDot, {BackgroundColor3 = Color3.fromRGB(255, 80, 80)}, 0.3)
-        end
-    end
+    
+    btn.MouseButton1Click:Connect(function() open=not open; dropFrame.Visible=open end)
+    return f
 end
 
-local function SetChestCount(text)
-    if chestCountLabel then
-        chestCountLabel.Text = text
-    end
-end
+-- Status labels
+local statusLabel, statusDot, chestLabel, fruitLabel, timeoutLabel, hopLabel, totalLabel, teamLabel
 
-local function SetFruitCount(text)
-    if fruitCountLabel then
-        fruitCountLabel.Text = text
-    end
-end
+local function SetStatus(t,a) if statusLabel then statusLabel.Text=t; Tween(statusDot,{BackgroundColor3=a and Color3.fromRGB(0,255,100) or Color3.fromRGB(255,80,80)},0.3) end end
+local function SetChest(t) if chestLabel then chestLabel.Text=t end end
+local function SetFruit(t) if fruitLabel then fruitLabel.Text=t end end
+local function SetTimeout(t) if timeoutLabel then timeoutLabel.Text=t end end
+local function SetHop(t) if hopLabel then hopLabel.Text=t end end
+local function SetTotal(t) if totalLabel then totalLabel.Text=t end end
+local function SetTeam(t) if teamLabel then teamLabel.Text=t end end
 
-local function SetTimeoutLabel(text)
-    if timeoutLabel then
-        timeoutLabel.Text = text
-    end
-end
-
-local function SetServerhopCount(text)
-    if serverhopCountLabel then
-        serverhopCountLabel.Text = text
-    end
-end
-
-local function SetTotalChests(text)
-    if totalChestsLabel then
-        totalChestsLabel.Text = text
-    end
-end
-
--- ==================== SERVERHOP FUNKTION ====================
+-- ==================== SERVERHOP ====================
 local function Serverhop()
-    if isServerhopping then return end
-    isServerhopping = true
-    
-    SetStatus("Serverhopping...", true)
-    SaveSettings()
-    
-    -- Kurze Verzögerung für UI-Update
-    task.wait(1)
-    
-    -- Teleport zu Blox Fruits (neuer Server)
-    pcall(function()
-        TeleportService:Teleport(BLOX_FRUITS_PLACE_ID, LP)
-    end)
-    
-    -- Falls Teleport fehlschlägt
-    task.wait(5)
-    isServerhopping = false
-    SetStatus("Serverhop failed!", false)
+    if isServerhopping then return end; isServerhopping=true; SaveSettings(); task.wait(1)
+    pcall(function() TeleportService:Teleport(BLOX_FRUITS_PLACE_ID, LP) end); task.wait(5); isServerhopping=false
 end
 
 -- ==================== UI AUFBAUEN ====================
 -- Main Tab
-CreateSection(MainContent, "Chest Farm")
-CreateToggle(MainContent, "Auto Farm Chest", false, function(Value)
-    _G.ChestFarm = Value
-    if Value then
-        SetStatus("Status: Running", true)
-        ignoredChests = {}
-        currentChestTarget = nil
-        chestArrivedTime = 0
-        chestsCollected = 0
-        SetTimeoutLabel("Timeout: Ready")
-    else
-        SetStatus("Status: Idle", false)
-        if currentTween then
-            pcall(function() currentTween:Cancel() end)
-            currentTween = nil
-        end
-        ignoredChests = {}
-        currentChestTarget = nil
-        chestArrivedTime = 0
-        SetTimeoutLabel("Timeout: -")
-    end
+AddSection(MainPage, "🎯 Chest Farm", Color3.fromRGB(40, 40, 60))
+AddToggle(MainPage, "Auto Farm Chest", _G.ChestFarm, function(v)
+    _G.ChestFarm=v; SaveSettings()
+    if v then SetStatus("Running",true); ignoredChests={}; currentChestTarget=nil; chestArrivedTime=0; chestsCollected=0; SetTimeout("Ready")
+    else SetStatus("Idle",false); if currentTween then pcall(function() currentTween:Cancel() end); currentTween=nil end; ignoredChests={}; currentChestTarget=nil; chestArrivedTime=0; SetTimeout("-") end
 end)
+AddToggle(MainPage, "Chest ESP", _G.ChestESP, function(v) _G.ChestESP=v; SaveSettings(); if not v then for _,d in pairs(espObjects) do if d.BB then d.BB:Destroy() end end; espObjects={} end end)
+AddToggle(MainPage, "Noclip", noclipActive, function(v) noclipActive=v; SaveSettings(); if not v and LP.Character then DisableNoclip(LP.Character) elseif v and LP.Character then EnableNoclip(LP.Character) end end)
 
-CreateToggle(MainContent, "Chest ESP", _G.ChestESP, function(Value)
-    _G.ChestESP = Value
-    SaveSettings()
-    if not Value then
-        for chest, data in pairs(espObjects) do
-            if data and data.Billboard then
-                pcall(function() data.Billboard:Destroy() end)
-            end
-        end
-        espObjects = {}
-    end
-end)
-
-CreateToggle(MainContent, "Noclip", noclipActive, function(Value)
-    noclipActive = Value
-    SaveSettings()
-    if not Value and LP.Character then
-        DisableNoclip(LP.Character)
-    elseif Value and LP.Character then
-        EnableNoclip(LP.Character)
-    end
-end)
-
-CreateSection(MainContent, "Status")
-statusLabel, statusDot = CreateLabel(MainContent, "Status: Idle")
-chestCountLabel, _ = CreateLabel(MainContent, "Chests found: 0")
-timeoutLabel, _ = CreateLabel(MainContent, "Timeout: -")
+AddSection(MainPage, "📊 Status", Color3.fromRGB(40, 40, 60))
+statusLabel, statusDot = AddLabel(MainPage, "Status: "..(_G.ChestFarm and "Running" or "Idle"), Color3.fromRGB(0,255,100))
+chestLabel, _ = AddLabel(MainPage, "Chests this session: 0", Color3.fromRGB(255,200,0))
+timeoutLabel, _ = AddLabel(MainPage, "Timeout: -", Color3.fromRGB(255,150,0))
+totalLabel, _ = AddLabel(MainPage, "Total collected: "..totalChestsEver, Color3.fromRGB(100,200,255))
 
 -- Fruit Tab
-CreateSection(FruitContent, "Fruit Settings")
-CreateToggle(FruitContent, "Fruit ESP", _G.FruitESP, function(Value)
-    _G.FruitESP = Value
+AddSection(FruitPage, "🍎 Fruit Farm", Color3.fromRGB(40, 40, 60))
+AddToggle(FruitPage, "Fruit ESP", _G.FruitESP, function(v) _G.FruitESP=v; SaveSettings(); if not v then for _,d in pairs(fruitEspObjects) do if d.BB then d.BB:Destroy() end end; fruitEspObjects={} end end)
+AddToggle(FruitPage, "Auto Collect Fruit", _G.AutoFruit, function(v) _G.AutoFruit=v; SaveSettings() end)
+AddSection(FruitPage, "📊 Fruit Stats", Color3.fromRGB(40, 40, 60))
+fruitLabel, _ = AddLabel(FruitPage, "Fruits found: 0", Color3.fromRGB(255,100,100))
+
+-- Server Tab
+AddSection(ServerPage, "🔄 Serverhop", Color3.fromRGB(40, 40, 60))
+AddToggle(ServerPage, "Auto Serverhop", _G.AutoServerhop, function(v) _G.AutoServerhop=v; SaveSettings(); if v then chestsCollected=0; SetHop("Hop at: ".._G.ChestTarget) end end)
+
+local sliderFrame, sliderText = AddSlider(ServerPage, "Chests until hop", 20, 250, _G.ChestTarget, function(v)
+    _G.ChestTarget=v; SaveSettings(); SetHop("Hop at: "..v)
+end)
+
+AddButton(ServerPage, "Serverhop NOW", Color3.fromRGB(200, 50, 50), Serverhop)
+AddSection(ServerPage, "📊 Hop Stats", Color3.fromRGB(40, 40, 60))
+hopLabel, _ = AddLabel(ServerPage, "Hop at: ".._G.ChestTarget, Color3.fromRGB(0,200,200))
+
+-- Team Tab
+AddSection(TeamPage, "👥 Team Join", Color3.fromRGB(40, 40, 60))
+AddButton(TeamPage, "🔵 Join Marines", Color3.fromRGB(30, 80, 180), function() JoinTeam("Marines"); SetTeam("Team: Marines") end)
+AddButton(TeamPage, "🔴 Join Pirates", Color3.fromRGB(180, 30, 30), function() JoinTeam("Pirates"); SetTeam("Team: Pirates") end)
+
+AddSection(TeamPage, "🤖 Auto Join", Color3.fromRGB(40, 40, 60))
+AddDropdown(TeamPage, "Auto Join", {"None", "Marines", "Pirates"}, _G.AutoMarines and "Marines" or _G.AutoPirates and "Pirates" or "None", function(v)
+    _G.AutoMarines = (v == "Marines")
+    _G.AutoPirates = (v == "Pirates")
     SaveSettings()
-    if not Value then
-        for fruit, data in pairs(fruitEspObjects) do
-            if data and data.Billboard then
-                pcall(function() data.Billboard:Destroy() end)
-            end
-        end
-        fruitEspObjects = {}
-    end
+    if v == "Marines" then JoinTeam("Marines"); SetTeam("Team: Marines")
+    elseif v == "Pirates" then JoinTeam("Pirates"); SetTeam("Team: Pirates")
+    else SetTeam("Team: None") end
 end)
 
-CreateToggle(FruitContent, "Auto Collect Fruit", false, function(Value)
-    _G.AutoFruit = Value
-    if Value then
-        SetStatus("Status: Looking for fruits...", true)
-    end
-end)
-
-CreateSection(FruitContent, "Fruit Status")
-fruitCountLabel, _ = CreateLabel(FruitContent, "Fruits found: 0")
-
--- Serverhop Tab
-CreateSection(ServerhopContent, "Auto Serverhop")
-CreateToggle(ServerhopContent, "Auto Serverhop", _G.AutoServerhop, function(Value)
-    _G.AutoServerhop = Value
-    SaveSettings()
-    if Value then
-        chestsCollected = 0
-        SetServerhopCount("Chests until hop: " .. serverhopInterval)
-    end
-end)
-
-CreateSection(ServerhopContent, "Serverhop Settings")
-CreateLabel(ServerhopContent, "Hops every " .. serverhopInterval .. " chests")
-
-CreateButton(ServerhopContent, "Serverhop NOW", function()
-    Serverhop()
-end)
-
-CreateSection(ServerhopContent, "Stats")
-serverhopCountLabel, _ = CreateLabel(ServerhopContent, "Chests until hop: -")
-totalChestsLabel, _ = CreateLabel(ServerhopContent, "Total chests: 0")
+AddSection(TeamPage, "📊 Team Status", Color3.fromRGB(40, 40, 60))
+teamLabel, _ = AddLabel(TeamPage, "Team: "..(_G.AutoMarines and "Marines" or _G.AutoPirates and "Pirates" or "None"), Color3.fromRGB(0,200,200))
 
 -- Settings Tab
-CreateSection(SettingsContent, "Information")
-CreateLabel(SettingsContent, "Chest & Fruit Farm v4.0")
-CreateLabel(SettingsContent, "Speed: 300 (Fixed Tween)")
-CreateLabel(SettingsContent, "Chest Timeout: 5s")
-CreateLabel(SettingsContent, "Serverhop: Every " .. serverhopInterval .. " chests")
-
-CreateSection(SettingsContent, "Controls")
-CreateButton(SettingsContent, "Save Settings", function()
-    SaveSettings()
-    SetStatus("Settings saved!", true)
+AddSection(SetPage, "ℹ️ Info", Color3.fromRGB(40, 40, 60))
+AddLabel(SetPage, "Chest & Fruit Farm v5.0", Color3.fromRGB(255,255,100))
+AddLabel(SetPage, "Speed: 300 | Timeout: 5s", Color3.fromRGB(150,150,200))
+AddButton(SetPage, "💾 Save Settings", Color3.fromRGB(50, 180, 50), function() SaveSettings(); SetStatus("Saved!", true) end)
+AddButton(SetPage, "🗑️ Unload Script", Color3.fromRGB(255, 60, 60), function()
+    if isAnimating then return end; isAnimating=true
+    _G.ChestFarm=false; _G.ChestESP=false; _G.FruitESP=false; _G.AutoFruit=false; _G.AutoServerhop=false; _G.AutoMarines=false; _G.AutoPirates=false; noclipActive=false
+    if currentTween then pcall(function() currentTween:Cancel() end); currentTween=nil end; SaveSettings()
+    for _,d in pairs(espObjects) do if d.BB then d.BB:Destroy() end end; espObjects={}
+    for _,d in pairs(fruitEspObjects) do if d.BB then d.BB:Destroy() end end; fruitEspObjects={}
+    Tween(MainFrame,{Size=UDim2.new(0,0,0,0),Position=UDim2.new(0.5,0,0.5,0)},0.25).Completed:Connect(function() ScreenGui:Destroy() end)
 end)
 
-CreateButton(SettingsContent, "Unload Script", function()
-    if isAnimating then return end
-    isAnimating = true
-    
-    _G.ChestFarm = false
-    _G.ChestESP = false
-    _G.FruitESP = false
-    _G.AutoFruit = false
-    _G.AutoServerhop = false
-    noclipActive = false
-    if currentTween then
-        pcall(function() currentTween:Cancel() end)
-        currentTween = nil
-    end
-    
-    SaveSettings()
-    
-    local shrinkTween = CreateTween(MainFrame, {
-        Size = UDim2.new(0, 0, 0, 0),
-        Position = UDim2.new(0.5, 0, 0.5, 0)
-    }, 0.25, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
-    
-    shrinkTween.Completed:Connect(function()
-        ScreenGui:Destroy()
-        isAnimating = false
-    end)
-    
-    for _, data in pairs(espObjects) do
-        if data and data.Billboard then
-            pcall(function() data.Billboard:Destroy() end)
-        end
-    end
-    espObjects = {}
-    for _, data in pairs(fruitEspObjects) do
-        if data and data.Billboard then
-            pcall(function() data.Billboard:Destroy() end)
-        end
-    end
-    fruitEspObjects = {}
-end)
-
--- Canvas Size updaten
-MainList:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-    MainContent.CanvasSize = UDim2.new(0, 0, 0, MainList.AbsoluteContentSize.Y + 10)
-end)
-FruitList:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-    FruitContent.CanvasSize = UDim2.new(0, 0, 0, FruitList.AbsoluteContentSize.Y + 10)
-end)
-ServerhopList:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-    ServerhopContent.CanvasSize = UDim2.new(0, 0, 0, ServerhopList.AbsoluteContentSize.Y + 10)
-end)
-SettingsList:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-    SettingsContent.CanvasSize = UDim2.new(0, 0, 0, SettingsList.AbsoluteContentSize.Y + 10)
-end)
-
-task.wait(0.1)
-MainContent.CanvasSize = UDim2.new(0, 0, 0, MainList.AbsoluteContentSize.Y + 10)
-FruitContent.CanvasSize = UDim2.new(0, 0, 0, FruitList.AbsoluteContentSize.Y + 10)
-ServerhopContent.CanvasSize = UDim2.new(0, 0, 0, ServerhopList.AbsoluteContentSize.Y + 10)
-SettingsContent.CanvasSize = UDim2.new(0, 0, 0, SettingsList.AbsoluteContentSize.Y + 10)
-
--- ==================== HILFSFUNKTIONEN ====================
-local function round(num)
-    return math.floor(num + 0.5)
-end
+-- ==================== FUNCTIONS ====================
+local function round(n) return math.floor(n+0.5) end
 
 local function GetChestCount()
-    local count = 0
-    pcall(function()
-        for _, chest in pairs(CollectionService:GetTagged("_ChestTagged")) do
-            if chest and chest:IsA("BasePart") and not chest:GetAttribute("IsDisabled") then
-                count = count + 1
-            end
-        end
-    end)
-    return count
+    local c=0
+    pcall(function() for _,ch in pairs(CollectionService:GetTagged("_ChestTagged")) do if ch and ch:IsA("BasePart") and not ch:GetAttribute("IsDisabled") then c=c+1 end end end)
+    return c
 end
 
 local function GetFruitCount()
-    local count = 0
-    pcall(function()
-        for _, obj in pairs(workspace:GetChildren()) do
-            if obj and obj:IsA("BasePart") and string.find(obj.Name, "Fruit") and obj:FindFirstChild("Handle") then
-                count = count + 1
-            end
-        end
-    end)
-    return count
+    local c=0
+    pcall(function() for _,o in pairs(workspace:GetChildren()) do if o and o:IsA("BasePart") and string.find(o.Name,"Fruit") and o:FindFirstChild("Handle") then c=c+1 end end end)
+    return c
 end
 
--- ==================== FRUIT ESP ====================
-local function CreateFruitESP(fruit)
-    if not fruit or fruitEspObjects[fruit] then return end
-    local handle = fruit:FindFirstChild("Handle")
-    if not handle or not handle:IsA("BasePart") then return end
-    
+-- ESP Functions
+local function CreateFruitESP(f)
+    if not f or fruitEspObjects[f] then return end; local h=f:FindFirstChild("Handle"); if not h or not h:IsA("BasePart") then return end
     pcall(function()
-        local billboard = Instance.new("BillboardGui")
-        billboard.Name = "FruitEsp"
-        billboard.Size = UDim2.new(0, 160, 0, 30)
-        billboard.Adornee = handle
-        billboard.AlwaysOnTop = true
-        billboard.StudsOffset = Vector3.new(0, 2, 0)
-        billboard.Parent = handle
-        
-        local bg = Instance.new("Frame")
-        bg.Size = UDim2.new(1, 0, 1, 0)
-        bg.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-        bg.BackgroundTransparency = 0.5
-        bg.BorderSizePixel = 0
-        bg.Parent = billboard
-        Instance.new("UICorner", bg).CornerRadius = UDim.new(0, 4)
-        
-        local label = Instance.new("TextLabel")
-        label.Size = UDim2.new(1, 0, 1, 0)
-        label.BackgroundTransparency = 1
-        label.Text = "Fruit"
-        label.TextColor3 = Color3.fromRGB(255, 100, 100)
-        label.TextScaled = true
-        label.Font = Enum.Font.GothamBold
-        label.Parent = billboard
-        
-        fruitEspObjects[fruit] = {Billboard = billboard, Label = label}
+        local bb=Instance.new("BillboardGui"); bb.Size=UDim2.new(0,160,0,30); bb.Adornee=h; bb.AlwaysOnTop=true; bb.StudsOffset=Vector3.new(0,2,0); bb.Parent=h
+        local bg=Instance.new("Frame"); bg.Size=UDim2.new(1,0,1,0); bg.BackgroundColor3=Color3.fromRGB(0,0,0); bg.BackgroundTransparency=0.5; bg.BorderSizePixel=0; bg.Parent=bb; Instance.new("UICorner",bg).CornerRadius=UDim.new(0,4)
+        local l=Instance.new("TextLabel"); l.Size=UDim2.new(1,0,1,0); l.BackgroundTransparency=1; l.Text="Fruit"; l.TextColor3=Color3.fromRGB(255,100,100); l.TextScaled=true; l.Font=Enum.Font.GothamBold; l.Parent=bb
+        fruitEspObjects[f]={BB=bb,Lbl=l}
     end)
 end
 
 local function UpdateFruitESP()
-    local playerPos = LP.Character and LP.Character:FindFirstChild("Head")
-    if not playerPos then return end
-    local pos = playerPos.Position
-    
-    for _, obj in pairs(workspace:GetChildren()) do
-        pcall(function()
-            if obj and string.find(obj.Name, "Fruit") and obj:FindFirstChild("Handle") then
-                if _G.FruitESP then
-                    if not fruitEspObjects[obj] then CreateFruitESP(obj) end
-                    local esp = fruitEspObjects[obj]
-                    if esp and esp.Label and obj.Handle then
-                        local dist = round((pos - obj.Handle.Position).Magnitude / 3)
-                        esp.Label.Text = obj.Name .. " (" .. dist .. "m)"
-                        if dist < 50 then
-                            esp.Label.TextColor3 = Color3.fromRGB(0, 255, 100)
-                        elseif dist < 150 then
-                            esp.Label.TextColor3 = Color3.fromRGB(255, 215, 0)
-                        else
-                            esp.Label.TextColor3 = Color3.fromRGB(255, 100, 100)
-                        end
-                    end
-                else
-                    if fruitEspObjects[obj] then
-                        local data = fruitEspObjects[obj]
-                        if data and data.Billboard then
-                            pcall(function() data.Billboard:Destroy() end)
-                        end
-                        fruitEspObjects[obj] = nil
-                    end
-                end
-            end
-        end)
-    end
+    local h=LP.Character and LP.Character:FindFirstChild("Head"); if not h then return end; local p=h.Position
+    for _,o in pairs(workspace:GetChildren()) do pcall(function() if o and string.find(o.Name,"Fruit") and o:FindFirstChild("Handle") then if _G.FruitESP then if not fruitEspObjects[o] then CreateFruitESP(o) end; local e=fruitEspObjects[o]; if e and e.Lbl and o.Handle then local d=round((p-o.Handle.Position).Magnitude/3); e.Lbl.Text=o.Name.." ("..d.."m)"; e.Lbl.TextColor3=d<50 and Color3.fromRGB(0,255,100) or d<150 and Color3.fromRGB(255,215,0) or Color3.fromRGB(255,100,100) end else if fruitEspObjects[o] then if fruitEspObjects[o].BB then fruitEspObjects[o].BB:Destroy() end; fruitEspObjects[o]=nil end end end end) end
 end
 
--- ==================== CHEST ESP ====================
-local function CreateChestESP(chest)
-    if not chest or espObjects[chest] then return end
-    
+local function CreateChestESP(ch)
+    if not ch or espObjects[ch] then return end
     pcall(function()
-        local billboard = Instance.new("BillboardGui")
-        billboard.Name = "ChestEsp"
-        billboard.Size = UDim2.new(0, 160, 0, 30)
-        billboard.Adornee = chest
-        billboard.AlwaysOnTop = true
-        billboard.StudsOffset = Vector3.new(0, 2, 0)
-        billboard.Parent = chest
-        
-        local bg = Instance.new("Frame")
-        bg.Size = UDim2.new(1, 0, 1, 0)
-        bg.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-        bg.BackgroundTransparency = 0.5
-        bg.BorderSizePixel = 0
-        bg.Parent = billboard
-        Instance.new("UICorner", bg).CornerRadius = UDim.new(0, 4)
-        
-        local label = Instance.new("TextLabel")
-        label.Size = UDim2.new(1, 0, 1, 0)
-        label.BackgroundTransparency = 1
-        label.Text = "Chest"
-        label.TextColor3 = Color3.fromRGB(255, 215, 0)
-        label.TextScaled = true
-        label.Font = Enum.Font.GothamBold
-        label.Parent = billboard
-        
-        espObjects[chest] = {Billboard = billboard, Label = label}
+        local bb=Instance.new("BillboardGui"); bb.Size=UDim2.new(0,160,0,30); bb.Adornee=ch; bb.AlwaysOnTop=true; bb.StudsOffset=Vector3.new(0,2,0); bb.Parent=ch
+        local bg=Instance.new("Frame"); bg.Size=UDim2.new(1,0,1,0); bg.BackgroundColor3=Color3.fromRGB(0,0,0); bg.BackgroundTransparency=0.5; bg.BorderSizePixel=0; bg.Parent=bb; Instance.new("UICorner",bg).CornerRadius=UDim.new(0,4)
+        local l=Instance.new("TextLabel"); l.Size=UDim2.new(1,0,1,0); l.BackgroundTransparency=1; l.Text="Chest"; l.TextColor3=Color3.fromRGB(255,215,0); l.TextScaled=true; l.Font=Enum.Font.GothamBold; l.Parent=bb
+        espObjects[ch]={BB=bb,Lbl=l}
     end)
 end
 
 local function UpdateChestESP()
-    local playerPos = LP.Character and LP.Character:FindFirstChild("Head")
-    if not playerPos then return end
-    local pos = playerPos.Position
-    
-    for _, chest in pairs(CollectionService:GetTagged("_ChestTagged")) do
-        pcall(function()
-            if chest and chest:IsA("BasePart") and not chest:GetAttribute("IsDisabled") then
-                if _G.ChestESP then
-                    if not espObjects[chest] then CreateChestESP(chest) end
-                    local esp = espObjects[chest]
-                    if esp and esp.Label then
-                        local dist = round((pos - chest:GetPivot().Position).Magnitude / 3)
-                        if ignoredChests[chest] then
-                            esp.Label.Text = "🚫 IGNORED (" .. dist .. "m)"
-                            esp.Label.TextColor3 = Color3.fromRGB(255, 50, 50)
-                        else
-                            esp.Label.Text = "Chest (" .. dist .. "m)"
-                            if dist < 50 then
-                                esp.Label.TextColor3 = Color3.fromRGB(0, 255, 100)
-                            elseif dist < 150 then
-                                esp.Label.TextColor3 = Color3.fromRGB(255, 215, 0)
-                            else
-                                esp.Label.TextColor3 = Color3.fromRGB(255, 100, 100)
-                            end
-                        end
-                    end
-                else
-                    if espObjects[chest] then
-                        local data = espObjects[chest]
-                        if data and data.Billboard then
-                            pcall(function() data.Billboard:Destroy() end)
-                        end
-                        espObjects[chest] = nil
-                    end
-                end
-            end
-        end)
-    end
+    local h=LP.Character and LP.Character:FindFirstChild("Head"); if not h then return end; local p=h.Position
+    for _,ch in pairs(CollectionService:GetTagged("_ChestTagged")) do pcall(function() if ch and ch:IsA("BasePart") and not ch:GetAttribute("IsDisabled") then if _G.ChestESP then if not espObjects[ch] then CreateChestESP(ch) end; local e=espObjects[ch]; if e and e.Lbl then local d=round((p-ch:GetPivot().Position).Magnitude/3); if ignoredChests[ch] then e.Lbl.Text="🚫 ("..d.."m)"; e.Lbl.TextColor3=Color3.fromRGB(255,50,50) else e.Lbl.Text="Chest ("..d.."m)"; e.Lbl.TextColor3=d<50 and Color3.fromRGB(0,255,100) or d<150 and Color3.fromRGB(255,215,0) or Color3.fromRGB(255,100,100) end end else if espObjects[ch] then if espObjects[ch].BB then espObjects[ch].BB:Destroy() end; espObjects[ch]=nil end end end end) end
 end
 
--- ==================== ESP LOOPS ====================
-task.spawn(function()
-    while task.wait(0.3) do
-        if _G.ChestESP then
-            UpdateChestESP()
-            SetChestCount("Chests found: " .. GetChestCount())
-        end
-    end
-end)
+-- ESP Loops
+task.spawn(function() while task.wait(0.3) do if _G.ChestESP then UpdateChestESP(); SetChest("Chests: "..GetChestCount()) end end end)
+task.spawn(function() while task.wait(0.3) do if _G.FruitESP then UpdateFruitESP(); SetFruit("Fruits: "..GetFruitCount()) end end end)
 
-task.spawn(function()
-    while task.wait(0.3) do
-        if _G.FruitESP then
-            UpdateFruitESP()
-            SetFruitCount("Fruits found: " .. GetFruitCount())
-        end
-    end
-end)
-
--- ==================== FIND NEAREST FUNCTIONS ====================
+-- Find Nearest Chest
 local function FindNearestChest()
-    local rootPart = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
-    if not rootPart then return nil, nil end
-    
-    local pos = rootPart.Position
-    local nearest = nil
-    local minDist = math.huge
-    
-    for _, chest in pairs(CollectionService:GetTagged("_ChestTagged")) do
-        pcall(function()
-            if chest and chest:IsA("BasePart") and not chest:GetAttribute("IsDisabled") then
-                if not ignoredChests[chest] then
-                    local dist = (chest:GetPivot().Position - pos).Magnitude
-                    if dist < minDist then
-                        minDist = dist
-                        nearest = chest
-                    end
-                end
-            end
-        end)
-    end
-    
-    return nearest, minDist
+    local r=LP.Character and LP.Character:FindFirstChild("HumanoidRootPart"); if not r then return nil,nil end; local p=r.Position; local n=nil; local m=math.huge
+    for _,ch in pairs(CollectionService:GetTagged("_ChestTagged")) do pcall(function() if ch and ch:IsA("BasePart") and not ch:GetAttribute("IsDisabled") and not ignoredChests[ch] then local d=(ch:GetPivot().Position-p).Magnitude; if d<m then m=d; n=ch end end end) end
+    return n,m
 end
 
--- ==================== TWEEN FUNKTION ====================
-local function TweenToPosition(targetCFrame)
-    if not LP.Character or not LP.Character:FindFirstChild("HumanoidRootPart") then
-        return false
-    end
-    
-    local currentTime = tick()
-    if currentTime - lastTeleportTime < TELEPORT_COOLDOWN then
-        return false
-    end
-    
-    local rootPart = LP.Character.HumanoidRootPart
-    local distance = (targetCFrame.Position - rootPart.Position).Magnitude
-    
-    local tweenSpeed = 300
-    local duration = distance / tweenSpeed
-    duration = math.max(duration, 0.1)
-    
-    if currentTween then
-        pcall(function() currentTween:Cancel() end)
-        currentTween = nil
-    end
-    
-    local tweenInfo = TweenInfo.new(duration, Enum.EasingStyle.Linear, Enum.EasingDirection.Out)
-    currentTween = TweenService:Create(rootPart, tweenInfo, {CFrame = targetCFrame})
-    currentTween:Play()
-    lastTeleportTime = currentTime
-    
-    task.delay(duration, function()
-        if currentTween then currentTween = nil end
-    end)
-    
-    return true
+-- Tween
+local function TweenTo(pos)
+    if not LP.Character or not LP.Character:FindFirstChild("HumanoidRootPart") then return false end
+    if tick()-lastTeleportTime<0.5 then return false end
+    local r=LP.Character.HumanoidRootPart; local d=(pos.Position-r.Position).Magnitude; local dur=math.max(d/300,0.1)
+    if currentTween then pcall(function() currentTween:Cancel() end); currentTween=nil end
+    currentTween=TweenService:Create(r,TweenInfo.new(dur,Enum.EasingStyle.Linear),{CFrame=pos}); currentTween:Play(); lastTeleportTime=tick()
+    task.delay(dur,function() if currentTween then currentTween=nil end end); return true
 end
 
--- ==================== AUTO FARM CHEST (MIT SERVERHOP) ====================
+-- Auto Farm Chest
 task.spawn(function()
     while task.wait(0.3) do
-        if _G.ChestFarm then
-            pcall(function()
-                if not LP.Character or not LP.Character:FindFirstChild("HumanoidRootPart") then
-                    SetStatus("Status: Waiting...", false)
-                    task.wait(0.5)
-                    return
-                end
-                
-                local rootPart = LP.Character.HumanoidRootPart
-                local playerPos = rootPart.Position
-                
-                -- Serverhop Check
-                if _G.AutoServerhop and chestsCollected >= serverhopInterval then
-                    local currentTime = tick()
-                    if currentTime - lastServerhopTime > SERVERHOP_COOLDOWN then
-                        lastServerhopTime = currentTime
-                        SetStatus("Serverhopping! (" .. chestsCollected .. " chests)", true)
-                        Serverhop()
-                        return
+        if _G.ChestFarm then pcall(function()
+            if not LP.Character or not LP.Character:FindFirstChild("HumanoidRootPart") then return end
+            local r=LP.Character.HumanoidRootPart; local pp=r.Position
+            
+            -- Serverhop Check mit ChestTarget
+            if _G.AutoServerhop and chestsCollected >= _G.ChestTarget and tick()-lastServerhopTime>30 then
+                lastServerhopTime=tick(); SetStatus("Serverhopping! ("..chestsCollected.." chests)",true); Serverhop(); return
+            end
+            
+            if currentChestTarget then
+                local dist=(currentChestTarget:GetPivot().Position-pp).Magnitude
+                if dist<10 then
+                    if chestArrivedTime==0 then chestArrivedTime=tick(); SetTimeout("Timeout: 5s")
+                    else local rem=math.max(0,5-(tick()-chestArrivedTime)); SetTimeout("Timeout: "..round(rem).."s")
+                        if tick()-chestArrivedTime>5 then SetStatus("Bugged!",false); SetTimeout("IGNORED"); ignoredChests[currentChestTarget]=true; currentChestTarget=nil; chestArrivedTime=0; if currentTween then pcall(function() currentTween:Cancel() end); currentTween=nil end; task.wait(0.5); return end
                     end
+                else if chestArrivedTime>0 then SetTimeout("Moving...") end; chestArrivedTime=0 end
+            end
+            
+            local ch,dist=FindNearestChest()
+            if ch and dist then
+                if ch~=currentChestTarget then currentChestTarget=ch; chestArrivedTime=0; SetTimeout("Moving..."); SetStatus("Moving ("..round(dist).."m)",true) end
+                TweenTo(CFrame.new(ch:GetPivot().Position+Vector3.new(0,3,0)))
+                if dist<15 then
+                    chestsCollected=chestsCollected+1; totalChestsEver=totalChestsEver+1
+                    SetChest("Chests this session: "..chestsCollected)
+                    SetTotal("Total collected: "..totalChestsEver)
+                    if _G.AutoServerhop then SetHop("Hop at: ".._G.ChestTarget.." ("..chestsCollected.."/".._G.ChestTarget..")") end
                 end
-                
-                -- Timeout-Check
-                if currentChestTarget then
-                    local chestPos = currentChestTarget:GetPivot().Position
-                    local distToChest = (chestPos - playerPos).Magnitude
-                    
-                    if distToChest < CHEST_ARRIVAL_DISTANCE then
-                        if chestArrivedTime == 0 then
-                            chestArrivedTime = tick()
-                            SetTimeoutLabel("Timeout: 5s")
-                        else
-                            local elapsed = tick() - chestArrivedTime
-                            local remaining = math.max(0, CHEST_TIMEOUT - elapsed)
-                            SetTimeoutLabel("Timeout: " .. round(remaining) .. "s")
-                            
-                            if elapsed > CHEST_TIMEOUT then
-                                SetStatus("Chest bugged! Ignoring...", false)
-                                SetTimeoutLabel("Timeout: IGNORED")
-                                ignoredChests[currentChestTarget] = true
-                                currentChestTarget = nil
-                                chestArrivedTime = 0
-                                
-                                if currentTween then
-                                    pcall(function() currentTween:Cancel() end)
-                                    currentTween = nil
-                                end
-                                task.wait(0.5)
-                                return
-                            end
-                        end
-                    else
-                        if chestArrivedTime > 0 then
-                            SetTimeoutLabel("Timeout: Moving...")
-                        end
-                        chestArrivedTime = 0
-                    end
-                end
-                
-                local chest, dist = FindNearestChest()
-                
-                if chest and dist then
-                    if chest ~= currentChestTarget then
-                        currentChestTarget = chest
-                        chestArrivedTime = 0
-                        SetTimeoutLabel("Timeout: Moving...")
-                        SetStatus("Moving to Chest (" .. round(dist) .. "m)", true)
-                    end
-                    
-                    local pos = chest:GetPivot().Position
-                    local targetPos = pos + Vector3.new(0, 3, 0)
-                    
-                    local success = TweenToPosition(CFrame.new(targetPos))
-                    
-                    if success then
-                        table.insert(chestHistory, chest)
-                        if #chestHistory > 5 then
-                            table.remove(chestHistory, 1)
-                        end
-                        
-                        -- Chest sammeln zählen (wenn wir nah genug sind)
-                        if dist < 15 then
-                            chestsCollected = chestsCollected + 1
-                            totalChestsEver = totalChestsEver + 1
-                            
-                            if _G.AutoServerhop then
-                                local remaining = serverhopInterval - chestsCollected
-                                SetServerhopCount("Chests until hop: " .. math.max(0, remaining))
-                            end
-                            SetTotalChests("Total chests: " .. totalChestsEver)
-                        end
-                    end
-                else
-                    SetStatus("No chests available", false)
-                    SetTimeoutLabel("Timeout: -")
-                    currentChestTarget = nil
-                    chestArrivedTime = 0
-                    task.wait(1)
-                end
-            end)
-        end
+            else SetStatus("No chests",false); SetTimeout("-"); currentChestTarget=nil; chestArrivedTime=0; task.wait(1) end
+        end) end
     end
 end)
 
--- ==================== AUTO COLLECT FRUIT ====================
+-- Auto Collect Fruit
 task.spawn(function()
     while task.wait(0.2) do
-        if _G.AutoFruit then
-            pcall(function()
-                if not LP.Character or not LP.Character:FindFirstChild("HumanoidRootPart") then
-                    return
-                end
-                
-                local rootPart = LP.Character.HumanoidRootPart
-                local playerPos = rootPart.Position
-                local foundFruit = false
-                
-                for _, obj in pairs(workspace:GetChildren()) do
-                    if obj and obj:FindFirstChild("Handle") then
-                        local handle = obj.Handle
-                        if handle and handle:IsA("BasePart") then
-                            if string.find(obj.Name, "Fruit") or string.find(obj.Name:lower(), "fruit") then
-                                local dist = (handle.Position - playerPos).Magnitude
-                                
-                                if dist < 100 then
-                                    rootPart.CFrame = CFrame.new(handle.Position - Vector3.new(0, 5, 0))
-                                    SetStatus("Fruit collected: " .. obj.Name, true)
-                                    foundFruit = true
-                                    task.wait(0.1)
-                                    break
-                                end
-                            end
-                        end
-                    end
-                end
-                
-                if not foundFruit then
-                    SetStatus("No fruits nearby", false)
-                end
-            end)
-        end
+        if _G.AutoFruit and LP.Character and LP.Character:FindFirstChild("HumanoidRootPart") then pcall(function()
+            local r=LP.Character.HumanoidRootPart; local pp=r.Position
+            for _,o in pairs(workspace:GetChildren()) do if o and o:FindFirstChild("Handle") then local h=o.Handle; if h and h:IsA("BasePart") and string.find(o.Name,"Fruit") and (h.Position-pp).Magnitude<100 then r.CFrame=CFrame.new(h.Position-Vector3.new(0,5,0)); SetStatus("Fruit: "..o.Name,true); task.wait(0.1); break end end end
+        end) end
     end
 end)
 
--- ==================== CHARACTER EVENTS ====================
-LP.CharacterAdded:Connect(function(char)
-    if currentTween then
-        pcall(function() currentTween:Cancel() end)
-        currentTween = nil
-    end
-    
-    chestHistory = {}
-    collectedFruits = {}
-    lastTeleportTime = 0
-    ignoredChests = {}
-    currentChestTarget = nil
-    chestArrivedTime = 0
-    
-    task.wait(0.2)
-    if noclipActive then
-        EnableNoclip(char)
+-- Character Events
+LP.CharacterAdded:Connect(function(c)
+    if currentTween then pcall(function() currentTween:Cancel() end); currentTween=nil end
+    lastTeleportTime=0; ignoredChests={}; currentChestTarget=nil; chestArrivedTime=0
+    task.wait(0.2); if noclipActive then EnableNoclip(c) end
+    if isServerhopping then isServerhopping=false; if not game:IsLoaded() then game.Loaded:Wait() end; task.wait(2)
+        if _G.AutoMarines then JoinTeam("Marines"); SetTeam("Team: Marines")
+        elseif _G.AutoPirates then JoinTeam("Pirates"); SetTeam("Team: Pirates") end
     end
 end)
 
--- ==================== INITIAL COUNTS ====================
-task.wait(1)
-SetChestCount("Chests found: " .. GetChestCount())
-SetFruitCount("Fruits found: " .. GetFruitCount())
-SetTimeoutLabel("Timeout: -")
-if _G.AutoServerhop then
-    SetServerhopCount("Chests until hop: " .. serverhopInterval)
-else
-    SetServerhopCount("Chests until hop: OFF")
-end
-SetTotalChests("Total chests: " .. totalChestsEver)
+-- ==================== INIT ====================
+task.wait(0.5)
+SetChest("Chests this session: 0")
+SetFruit("Fruits: "..GetFruitCount())
+SetTimeout("-")
+if _G.AutoServerhop then SetHop("Hop at: ".._G.ChestTarget) else SetHop("Hop: OFF") end
+SetTotal("Total collected: "..totalChestsEver)
+SetTeam("Team: "..(_G.AutoMarines and "Marines" or _G.AutoPirates and "Pirates" or "None"))
+if _G.ChestFarm then SetStatus("Running",true); SetTimeout("Ready"); chestsCollected=0 end
 
--- ==================== OPEN ANIMATION ====================
-MainFrame.Size = UDim2.new(0, 0, 0, 0)
-MainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
-CreateTween(MainFrame, {
-    Size = UDim2.new(0, 320, 0, 520),
-    Position = UDim2.new(0.5, -160, 0.5, -260)
-}, 0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+-- Open Animation
+MainFrame.Size = UDim2.new(0,0,0,0); MainFrame.Position = UDim2.new(0.5,0,0.5,0)
+Tween(MainFrame, {Size=UDim2.new(0,340,0,560), Position=UDim2.new(0.5,-170,0.5,-280)}, 0.35)
 
--- Auto Serverhop aktivieren wenn gespeichert
-if _G.AutoServerhop then
-    chestsCollected = 0
-    SetServerhopCount("Chests until hop: " .. serverhopInterval)
-end
+-- Auto-Init
+task.spawn(function()
+    task.wait(1)
+    if _G.AutoMarines then JoinTeam("Marines"); SetTeam("Team: Marines")
+    elseif _G.AutoPirates then JoinTeam("Pirates"); SetTeam("Team: Pirates") end
+    if _G.AutoServerhop then chestsCollected=0; SetHop("Hop at: ".._G.ChestTarget) end
+end)
 
-print("Chest & Fruit Farm Script loaded! (v4.0 - Auto Serverhop)")
-print("Features: Chest Farm | Fruit ESP | Auto Collect Fruit | Noclip | Auto Serverhop")
-print("Serverhop: Every " .. serverhopInterval .. " chests (toggleable, settings saved)")
-print("Blox Fruits Place ID: " .. BLOX_FRUITS_PLACE_ID)
+print("✅ Chest & Fruit Farm Stable (v5.0) loaded!")
+print("Features: Slider 20-250 | Auto Marines/Pirates Dropdown | Better UI | Accurate Counter")
