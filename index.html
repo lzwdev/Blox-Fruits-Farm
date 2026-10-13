@@ -504,9 +504,6 @@
       const TARGET_INDEX = TOTAL_BOXES - 30;
       const DURATION     = 11000;
 
-      /* Wartezeit nach dem Roll, bevor die Seite neu lädt (in ms) */
-      const RELOAD_DELAY = 2500;
-
       const spinner     = document.getElementById('spinner');
       const track       = document.getElementById('track');
       const rollBtn     = document.getElementById('rollBtn');
@@ -522,9 +519,6 @@
       let weightedPool = [];
       let arrowAnimId = null;
 
-      /* ============================================================
-         INVENTAR mit localStorage
-         ============================================================ */
       const STORAGE_KEY = 'zioles_gacha_inventory_v1';
       const inventory = new Map();
 
@@ -620,9 +614,6 @@
         }
       });
 
-      /* ============================================================
-         SPINNER LOGIK
-         ============================================================ */
       function updateUnderArrowBox() {
         if (!track) return;
         const arrowRect = arrowTop.getBoundingClientRect();
@@ -736,33 +727,27 @@
 
             setTimeout(() => {
               rolling = false;
-              rollBtn.disabled = false;
+
+              // === Frucht SOFORT speichern ===
+              addToInventory(drawnFruit);
+
+              // === Ergebnis kurz setzen, damit es im localStorage-Zustand ist ===
               statusEl.textContent = 'Fertig!';
               resultEl.textContent = `🎉 ${drawnFruit.name}${drawnFruit.classic ? ' (Classic)' : ''} 🎉`;
               resultEl.className = `result rarity-${drawnFruit.rarity}`;
 
               stopArrowTracking();
-
               targetBox.classList.add('hit');
-              setTimeout(() => targetBox.classList.remove('hit'), 2200);
 
-              // === Frucht speichern, BEVOR die Seite neu lädt ===
-              addToInventory(drawnFruit);
-
-              // === Seite nach kurzer Anzeige neu laden ===
-              statusEl.textContent = 'Seite lädt neu…';
-              setTimeout(() => {
-                location.reload();
-              }, RELOAD_DELAY);
+              // === Button ausgegraut lassen und SOFORT neu laden ===
+              // rollBtn bleibt disabled (wird nicht mehr aktiviert)
+              location.reload();
 
             }, DURATION + 80);
           });
         });
       }
 
-      /* ============================================================
-         INIT
-         ============================================================ */
       loadInventory();
       buildTrack();
       renderInventory();
