@@ -18,7 +18,7 @@
       --rar-common:      #4d4d63;
       --rar-common-lt:   #8585a0;
       --rar-common-bg:   #c8c8d8;
-      --rar-uncommon:    #0d5fb0;      /* Blau */
+      --rar-uncommon:    #0d5fb0;
       --rar-uncommon-lt: #3d9ce0;
       --rar-uncommon-bg: #b8d8f5;
       --rar-rare:        #6b21a8;
@@ -504,6 +504,9 @@
       const TARGET_INDEX = TOTAL_BOXES - 30;
       const DURATION     = 11000;
 
+      /* Wartezeit nach dem Roll, bevor die Seite neu lädt (in ms) */
+      const RELOAD_DELAY = 2500;
+
       const spinner     = document.getElementById('spinner');
       const track       = document.getElementById('track');
       const rollBtn     = document.getElementById('rollBtn');
@@ -723,8 +726,6 @@
             const containerW = track.parentElement.clientWidth;
             const centerOffset = (containerW / 2) - (BOX_WIDTH / 2);
 
-            // Offset begrenzt auf ±0.45 Boxbreiten, damit der Pfeil
-            // garantiert innerhalb der Zielbox landet (kein Bug mehr)
             const randomFactor = (Math.random() * 2 - 1) * 0.45;
 
             const baseTargetPos = (TARGET_INDEX * BOX_WIDTH) - centerOffset;
@@ -745,7 +746,14 @@
               targetBox.classList.add('hit');
               setTimeout(() => targetBox.classList.remove('hit'), 2200);
 
+              // === Frucht speichern, BEVOR die Seite neu lädt ===
               addToInventory(drawnFruit);
+
+              // === Seite nach kurzer Anzeige neu laden ===
+              statusEl.textContent = 'Seite lädt neu…';
+              setTimeout(() => {
+                location.reload();
+              }, RELOAD_DELAY);
 
             }, DURATION + 80);
           });
