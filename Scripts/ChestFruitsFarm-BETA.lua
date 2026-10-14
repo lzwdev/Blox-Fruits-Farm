@@ -1,4 +1,4 @@
-´-- Fruit Notifier + Auto Tween + Chest Farm (Nebula UI Edition)
+-- Fruit Notifier + Auto Tween + Chest Farm (Nebula UI Edition)
 -- Features: Fruit Notifier, Auto Tween (jede Distanz), Chest Farm, Chest ESP, Tween Speed Slider (50-300)
 
 if not game:IsLoaded() then game.Loaded:Wait() end
