@@ -1,9 +1,17 @@
--- Fruit Notifier + Auto Tween + Chest Farm by lzwdev (merged)
+´-- Fruit Notifier + Auto Tween + Chest Farm (Nebula UI Edition)
 -- Features: Fruit Notifier, Auto Tween (jede Distanz), Chest Farm, Chest ESP, Tween Speed Slider (50-300)
 
 if not game:IsLoaded() then game.Loaded:Wait() end
 repeat task.wait() until game:GetService("Players") and game:GetService("CoreGui") and game:GetService("CollectionService")
 
+-- =====================================================
+--  NEBULA UI LADEN
+-- =====================================================
+local Nebula = loadstring(game:HttpGet("https://raw.githubusercontent.com/lzwdev/Nebula/refs/heads/main/Nebula-UI/V3.lua"))()
+
+-- =====================================================
+--  SERVICES
+-- =====================================================
 local Players          = game:GetService("Players")
 local RunService       = game:GetService("RunService")
 local CoreGui          = game:GetService("CoreGui")
@@ -58,120 +66,42 @@ local function findNearestChest()
 end
 
 -- =====================================================
---  NOTIFICATION SYSTEM (Stapel)
--- =====================================================
-local NotifHolder = Instance.new("Frame")
-NotifHolder.Name = "FruitNotifier_Stack"
-NotifHolder.Size = UDim2.new(0, 320, 1, -40)
-NotifHolder.Position = UDim2.new(1, -340, 0, 20)
-NotifHolder.BackgroundTransparency = 1
-NotifHolder.Parent = CoreGui
-NotifHolder.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-
-local UIList = Instance.new("UIListLayout")
-UIList.SortOrder = Enum.SortOrder.LayoutOrder
-UIList.Padding = UDim.new(0, 8)
-UIList.VerticalAlignment = Enum.VerticalAlignment.Top
-UIList.Parent = NotifHolder
-
-local notifOrder = 0
-
-local function showNotification(title, subtitle, color)
-    notifOrder = notifOrder + 1
-
-    local card = Instance.new("Frame")
-    card.Size = UDim2.new(1, 0, 0, 60)
-    card.BackgroundColor3 = Color3.fromRGB(18, 18, 28)
-    card.BorderSizePixel = 0
-    card.BackgroundTransparency = 1
-    card.LayoutOrder = notifOrder
-    card.Parent = NotifHolder
-    Instance.new("UICorner", card).CornerRadius = UDim.new(0, 10)
-
-    local stroke = Instance.new("UIStroke")
-    stroke.Color = color or Color3.fromRGB(255, 200, 80)
-    stroke.Thickness = 2
-    stroke.Transparency = 1
-    stroke.Parent = card
-
-    local side = Instance.new("Frame")
-    side.Size = UDim2.new(0, 4, 1, -12)
-    side.Position = UDim2.new(0, 6, 0, 6)
-    side.BackgroundColor3 = color or Color3.fromRGB(255, 200, 80)
-    side.BorderSizePixel = 0
-    side.BackgroundTransparency = 1
-    side.Parent = card
-    Instance.new("UICorner", side).CornerRadius = UDim.new(0, 4)
-
-    local icon = Instance.new("TextLabel")
-    icon.Size = UDim2.new(0, 40, 0, 40)
-    icon.Position = UDim2.new(0, 18, 0.5, -20)
-    icon.BackgroundTransparency = 1
-    icon.Text = "🍎"
-    icon.TextSize = 22
-    icon.TextTransparency = 1
-    icon.Parent = card
-
-    local titleLbl = Instance.new("TextLabel")
-    titleLbl.Size = UDim2.new(1, -80, 0, 22)
-    titleLbl.Position = UDim2.new(0, 62, 0, 10)
-    titleLbl.BackgroundTransparency = 1
-    titleLbl.Text = title
-    titleLbl.TextColor3 = Color3.fromRGB(255, 255, 255)
-    titleLbl.TextSize = 13
-    titleLbl.Font = Enum.Font.GothamBold
-    titleLbl.TextXAlignment = Enum.TextXAlignment.Left
-    titleLbl.TextTransparency = 1
-    titleLbl.Parent = card
-
-    local subLbl = Instance.new("TextLabel")
-    subLbl.Size = UDim2.new(1, -80, 0, 18)
-    subLbl.Position = UDim2.new(0, 62, 0, 32)
-    subLbl.BackgroundTransparency = 1
-    subLbl.Text = subtitle
-    subLbl.TextColor3 = Color3.fromRGB(160, 180, 220)
-    subLbl.TextSize = 10
-    subLbl.Font = Enum.Font.Gotham
-    subLbl.TextXAlignment = Enum.TextXAlignment.Left
-    subLbl.TextTransparency = 1
-    subLbl.Parent = card
-
-    local info = TweenInfo.new(0.3, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
-    TweenService:Create(card, info, { BackgroundTransparency = 0 }):Play()
-    TweenService:Create(side, info, { BackgroundTransparency = 0 }):Play()
-    TweenService:Create(stroke, info, { Transparency = 0 }):Play()
-    TweenService:Create(icon, info, { TextTransparency = 0 }):Play()
-    TweenService:Create(titleLbl, info, { TextTransparency = 0 }):Play()
-    TweenService:Create(subLbl, info, { TextTransparency = 0 }):Play()
-
-    task.delay(7.5, function()
-        local out = TweenInfo.new(0.4, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
-        local t1 = TweenService:Create(card, out, { BackgroundTransparency = 1 })
-        local t2 = TweenService:Create(side, out, { BackgroundTransparency = 1 })
-        local t3 = TweenService:Create(stroke, out, { Transparency = 1 })
-        local t4 = TweenService:Create(icon, out, { TextTransparency = 1 })
-        local t5 = TweenService:Create(titleLbl, out, { TextTransparency = 1 })
-        local t6 = TweenService:Create(subLbl, out, { TextTransparency = 1 })
-        t1:Play(); t2:Play(); t3:Play(); t4:Play(); t5:Play(); t6:Play()
-        t1.Completed:Connect(function() card:Destroy() end)
-    end)
-end
-
--- =====================================================
 --  STATE
 -- =====================================================
 local State = {
     TweenEnabled = false,
-    TweenSpeed   = 220,       -- 50..300
+    TweenSpeed   = 220,
     KnownFruits  = {},
     ChestFarm    = false,
     ChestESP     = false,
-    AutoFruit    = false,
 }
 
 local function autoTweenActive()
     return State.TweenEnabled and not State.ChestFarm
 end
+
+-- =====================================================
+--  NEBULA WINDOW ERSTELLEN
+-- =====================================================
+local Window = Nebula.CreateWindow({
+    Title = "🍎 Fruit & Chest Farm",
+    ConfigName = "FruitChestFarm_Nebula",
+    ShowLoading = true,
+    LoadingDuration = 3,
+    LoadingSteps = {
+        "Initializing...",
+        "Loading Fruit System...",
+        "Loading Chest System...",
+        "Ready!"
+    }
+})
+
+-- =====================================================
+--  TABS ERSTELLEN
+-- =====================================================
+local FruitTab    = Window:CreateTab("Fruits", "🍎")
+local ChestTab    = Window:CreateTab("Chest Farm", "📦")
+local SettingsTab = Window:CreateTab("Settings", "⚙")
 
 -- =====================================================
 --  FRUIT TRACKER
@@ -184,11 +114,13 @@ local function trackFruit(fruit)
     local root = getRoot()
     local dist = root and math.floor((handle.Position - root.Position).Magnitude) or 0
 
-    showNotification(
-        "🍎 Fruit spawned: " .. fruit.Name,
-        string.format("Distance: %d studs", dist),
-        Color3.fromRGB(255, 200, 80)
-    )
+    Window:Notify({
+        Title = "🍎 Fruit spawned",
+        Content = fruit.Name .. "  ·  " .. dist .. " studs",
+        Type = "info",
+        Duration = 6,
+        Icon = "🍎"
+    })
 
     fruit.AncestryChanged:Connect(function(_, parent)
         if not parent then
@@ -338,6 +270,12 @@ local function updateChestESP()
     end
 end
 
+task.spawn(function()
+    while task.wait(0.3) do
+        if State.ChestESP then updateChestESP() end
+    end
+end)
+
 -- =====================================================
 --  CHEST FARM LOOP
 -- =====================================================
@@ -345,7 +283,6 @@ local ignoredChests = {}
 local currentChestTarget = nil
 local chestArrivedTime = 0
 local chestsCollected = 0
-local isFarmingChest = false
 
 task.spawn(function()
     while task.wait(0.3) do
@@ -371,33 +308,23 @@ task.spawn(function()
                     end
                 end
 
-                local ch, dist = findNearestChest()
-                -- Filter ignored
-                while ch and ignoredChests[ch] do
-                    ch, dist = nil, nil
-                    -- fallback: find next
-                    local best, bestD = nil, math.huge
-                    for _, c in ipairs(getChests()) do
-                        if not ignoredChests[c] then
-                            local d = (c:GetPivot().Position - root.Position).Magnitude
-                            if d < bestD then bestD = d; best = c end
-                        end
+                local best, bestD = nil, math.huge
+                for _, c in ipairs(getChests()) do
+                    if not ignoredChests[c] then
+                        local d = (c:GetPivot().Position - root.Position).Magnitude
+                        if d < bestD then bestD = d; best = c end
                     end
-                    ch, dist = best, bestD
-                    break
                 end
 
-                if ch and dist then
-                    if ch ~= currentChestTarget then
-                        currentChestTarget = ch
+                if best and bestD then
+                    if best ~= currentChestTarget then
+                        currentChestTarget = best
                         chestArrivedTime = 0
                     end
-                    isFarmingChest = true
-                    flyTo(ch:GetPivot().Position + Vector3.new(0, 3, 0), State.TweenSpeed)
-                    if dist < 15 then
+                    flyTo(best:GetPivot().Position + Vector3.new(0, 3, 0), State.TweenSpeed)
+                    if bestD < 15 then
                         chestsCollected = chestsCollected + 1
                     end
-                    isFarmingChest = false
                 else
                     currentChestTarget = nil
                     chestArrivedTime = 0
@@ -409,281 +336,148 @@ task.spawn(function()
 end)
 
 -- =====================================================
---  GUI
+--  FRUIT TAB UI
 -- =====================================================
-local gui = Instance.new("ScreenGui")
-gui.Name = "FruitNotifier_ChestFarm_GUI"
-gui.Parent = CoreGui
-gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-gui.ResetOnSpawn = false
+local FruitSection = Nebula.CreateSection(FruitTab, {
+    Name = "Auto Tween"
+})
 
-local frame = Instance.new("Frame")
-frame.Size = UDim2.new(0, 280, 0, 420)
-frame.Position = UDim2.new(0, 20, 0.5, -210)
-frame.BackgroundColor3 = Color3.fromRGB(15, 15, 25)
-frame.BorderSizePixel = 0
-frame.Active = true
-frame.Draggable = true
-frame.Parent = gui
-Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 12)
-
-local title = Instance.new("TextLabel")
-title.Size = UDim2.new(1, 0, 0, 34)
-title.BackgroundTransparency = 1
-title.Text = "🍎 Fruit & Chest Farm"
-title.TextColor3 = Color3.fromRGB(255, 255, 255)
-title.Font = Enum.Font.GothamBold
-title.TextSize = 14
-title.Parent = frame
-
--- ========== TAB BAR ==========
-local tabBar = Instance.new("Frame")
-tabBar.Size = UDim2.new(1, -20, 0, 30)
-tabBar.Position = UDim2.new(0, 10, 0, 38)
-tabBar.BackgroundColor3 = Color3.fromRGB(22, 22, 35)
-tabBar.BorderSizePixel = 0
-tabBar.Parent = frame
-Instance.new("UICorner", tabBar).CornerRadius = UDim.new(0, 8)
-
-local function makeTab(name, x)
-    local b = Instance.new("TextButton")
-    b.Size = UDim2.new(0.5, -4, 1, -4)
-    b.Position = UDim2.new(x, 2, 0, 2)
-    b.BackgroundColor3 = Color3.fromRGB(35, 35, 55)
-    b.BorderSizePixel = 0
-    b.Text = name
-    b.TextColor3 = Color3.fromRGB(180, 180, 200)
-    b.TextSize = 11
-    b.Font = Enum.Font.GothamBold
-    b.Parent = tabBar
-    Instance.new("UICorner", b).CornerRadius = UDim.new(0, 6)
-    return b
-end
-
-local fruitTabBtn = makeTab("Fruits", 0)
-local chestTabBtn = makeTab("Chest Farm", 0.5)
-
--- ========== CONTENT ==========
-local content = Instance.new("Frame")
-content.Size = UDim2.new(1, -20, 1, -160)
-content.Position = UDim2.new(0, 10, 0, 76)
-content.BackgroundTransparency = 1
-content.ClipsDescendants = true
-content.Parent = frame
-
--- Fruit Page
-local fruitPage = Instance.new("Frame")
-fruitPage.Size = UDim2.new(1, 0, 1, 0)
-fruitPage.Position = UDim2.new(0, 0, 0, 0)
-fruitPage.BackgroundTransparency = 1
-fruitPage.Parent = content
-
--- Chest Page
-local chestPage = Instance.new("Frame")
-chestPage.Size = UDim2.new(1, 0, 1, 0)
-chestPage.Position = UDim2.new(1, 0, 0, 0)
-chestPage.BackgroundTransparency = 1
-chestPage.Parent = content
-
-local function switchTab(tab)
-    if tab == "fruit" then
-        TweenService:Create(fruitPage, TweenInfo.new(0.25), { Position = UDim2.new(0, 0, 0, 0) }):Play()
-        TweenService:Create(chestPage, TweenInfo.new(0.25), { Position = UDim2.new(1, 0, 0, 0) }):Play()
-        fruitTabBtn.BackgroundColor3 = Color3.fromRGB(80, 130, 255)
-        fruitTabBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-        chestTabBtn.BackgroundColor3 = Color3.fromRGB(35, 35, 55)
-        chestTabBtn.TextColor3 = Color3.fromRGB(180, 180, 200)
-    else
-        TweenService:Create(fruitPage, TweenInfo.new(0.25), { Position = UDim2.new(-1, 0, 0, 0) }):Play()
-        TweenService:Create(chestPage, TweenInfo.new(0.25), { Position = UDim2.new(0, 0, 0, 0) }):Play()
-        chestTabBtn.BackgroundColor3 = Color3.fromRGB(255, 150, 50)
-        chestTabBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-        fruitTabBtn.BackgroundColor3 = Color3.fromRGB(35, 35, 55)
-        fruitTabBtn.TextColor3 = Color3.fromRGB(180, 180, 200)
+FruitSection:CreateToggle({
+    Name = "Auto Tween Fruits",
+    Default = false,
+    Callback = function(Value)
+        State.TweenEnabled = Value
     end
-end
+})
 
-fruitTabBtn.MouseButton1Click:Connect(function() switchTab("fruit") end)
-chestTabBtn.MouseButton1Click:Connect(function() switchTab("chest") end)
-switchTab("fruit")
-
--- ========== FRUIT PAGE ==========
-local fruitToggle = Instance.new("TextButton")
-fruitToggle.Size = UDim2.new(1, 0, 0, 34)
-fruitToggle.Position = UDim2.new(0, 0, 0, 0)
-fruitToggle.BackgroundColor3 = Color3.fromRGB(45, 45, 60)
-fruitToggle.BorderSizePixel = 0
-fruitToggle.Text = "Auto Tween  [OFF]"
-fruitToggle.TextColor3 = Color3.fromRGB(255, 255, 255)
-fruitToggle.Font = Enum.Font.GothamBold
-fruitToggle.TextSize = 12
-fruitToggle.Parent = fruitPage
-Instance.new("UICorner", fruitToggle).CornerRadius = UDim.new(0, 8)
-
-fruitToggle.MouseButton1Click:Connect(function()
-    State.TweenEnabled = not State.TweenEnabled
-    fruitToggle.BackgroundColor3 = State.TweenEnabled and Color3.fromRGB(0, 150, 80) or Color3.fromRGB(45, 45, 60)
-    fruitToggle.Text = "Auto Tween  [" .. (State.TweenEnabled and "ON" or "OFF") .. "]"
-end)
-
--- Speed Label (Fruit)
-local speedLbl = Instance.new("TextLabel")
-speedLbl.Size = UDim2.new(1, 0, 0, 20)
-speedLbl.Position = UDim2.new(0, 0, 0, 42)
-speedLbl.BackgroundTransparency = 1
-speedLbl.Text = "Tween Speed: " .. State.TweenSpeed
-speedLbl.TextColor3 = Color3.fromRGB(180, 200, 255)
-speedLbl.Font = Enum.Font.Gotham
-speedLbl.TextSize = 11
-speedLbl.TextXAlignment = Enum.TextXAlignment.Left
-speedLbl.Parent = fruitPage
-
--- Speed Slider (Fruit)
-local sliderBg = Instance.new("Frame")
-sliderBg.Size = UDim2.new(1, 0, 0, 10)
-sliderBg.Position = UDim2.new(0, 0, 0, 66)
-sliderBg.BackgroundColor3 = Color3.fromRGB(40, 40, 55)
-sliderBg.BorderSizePixel = 0
-sliderBg.Parent = fruitPage
-Instance.new("UICorner", sliderBg).CornerRadius = UDim.new(0, 5)
-
-local sliderFill = Instance.new("Frame")
-sliderFill.Size = UDim2.new((State.TweenSpeed - 50) / 250, 0, 1, 0)
-sliderFill.BackgroundColor3 = Color3.fromRGB(80, 130, 255)
-sliderFill.BorderSizePixel = 0
-sliderFill.Parent = sliderBg
-Instance.new("UICorner", sliderFill).CornerRadius = UDim.new(0, 5)
-
-local sliderKnob = Instance.new("TextButton")
-sliderKnob.Size = UDim2.new(0, 14, 0, 14)
-sliderKnob.Position = UDim2.new((State.TweenSpeed - 50) / 250, -7, 0.5, -7)
-sliderKnob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-sliderKnob.BorderSizePixel = 0
-sliderKnob.Text = ""
-sliderKnob.Parent = sliderBg
-Instance.new("UICorner", sliderKnob).CornerRadius = UDim.new(1, 0)
-
-local draggingFruit = false
-
-local function setSliderFromX(x)
-    local relX = math.clamp((x - sliderBg.AbsolutePosition.X) / sliderBg.AbsoluteSize.X, 0, 1)
-    local speed = math.floor(50 + relX * 250) -- 50..300
-    State.TweenSpeed = speed
-    sliderFill.Size = UDim2.new(relX, 0, 1, 0)
-    sliderKnob.Position = UDim2.new(relX, -7, 0.5, -7)
-    speedLbl.Text = "Tween Speed: " .. speed
-end
-
-sliderKnob.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1
-       or input.UserInputType == Enum.UserInputType.Touch then
-        draggingFruit = true
+FruitSection:CreateSlider({
+    Name = "Tween Speed",
+    Min = 50,
+    Max = 300,
+    Default = 220,
+    Suffix = " studs/s",
+    Callback = function(Value)
+        State.TweenSpeed = Value
     end
-end)
+})
 
-sliderBg.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1
-       or input.UserInputType == Enum.UserInputType.Touch then
-        draggingFruit = true
-        setSliderFromX(input.Position.X)
+local InfoSection = Nebula.CreateSection(FruitTab, {
+    Name = "Info"
+})
+
+InfoSection:CreateToggle({
+    Name = "Tweent zu JEDER Distanz",
+    Default = true,
+    Callback = function(Value)
+        -- Nur Info-Toggle (immer an)
     end
-end)
+})
 
-UserInputService.InputChanged:Connect(function(input)
-    if draggingFruit and (input.UserInputType == Enum.UserInputType.MouseMovement
-       or input.UserInputType == Enum.UserInputType.Touch) then
-        setSliderFromX(input.Position.X)
-    end
-end)
+-- =====================================================
+--  CHEST TAB UI
+-- =====================================================
+local ChestSection = Nebula.CreateSection(ChestTab, {
+    Name = "Chest Farm"
+})
 
-UserInputService.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1
-       or input.UserInputType == Enum.UserInputType.Touch then
-        draggingFruit = false
-    end
-end)
-
--- Info Label
-local infoLbl = Instance.new("TextLabel")
-infoLbl.Size = UDim2.new(1, 0, 0, 20)
-infoLbl.Position = UDim2.new(0, 0, 0, 90)
-infoLbl.BackgroundTransparency = 1
-infoLbl.Text = "Tweent zu JEDER Distanz automatisch."
-infoLbl.TextColor3 = Color3.fromRGB(140, 140, 160)
-infoLbl.Font = Enum.Font.Gotham
-infoLbl.TextSize = 10
-infoLbl.TextXAlignment = Enum.TextXAlignment.Left
-infoLbl.Parent = fruitPage
-
--- ========== CHEST PAGE ==========
-local chestFarmToggle = Instance.new("TextButton")
-chestFarmToggle.Size = UDim2.new(1, 0, 0, 34)
-chestFarmToggle.Position = UDim2.new(0, 0, 0, 0)
-chestFarmToggle.BackgroundColor3 = Color3.fromRGB(45, 45, 60)
-chestFarmToggle.BorderSizePixel = 0
-chestFarmToggle.Text = "Auto Chest Farm  [OFF]"
-chestFarmToggle.TextColor3 = Color3.fromRGB(255, 255, 255)
-chestFarmToggle.Font = Enum.Font.GothamBold
-chestFarmToggle.TextSize = 12
-chestFarmToggle.Parent = chestPage
-Instance.new("UICorner", chestFarmToggle).CornerRadius = UDim.new(0, 8)
-
-chestFarmToggle.MouseButton1Click:Connect(function()
-    State.ChestFarm = not State.ChestFarm
-    chestFarmToggle.BackgroundColor3 = State.ChestFarm and Color3.fromRGB(255, 150, 50) or Color3.fromRGB(45, 45, 60)
-    chestFarmToggle.Text = "Auto Chest Farm  [" .. (State.ChestFarm and "ON" or "OFF") .. "]"
-    if State.ChestFarm then
-        ignoredChests = {}
-        currentChestTarget = nil
-        chestArrivedTime = 0
-    end
-end)
-
-local chestESPToggle = Instance.new("TextButton")
-chestESPToggle.Size = UDim2.new(1, 0, 0, 34)
-chestESPToggle.Position = UDim2.new(0, 0, 0, 42)
-chestESPToggle.BackgroundColor3 = Color3.fromRGB(45, 45, 60)
-chestESPToggle.BorderSizePixel = 0
-chestESPToggle.Text = "Chest ESP  [OFF]"
-chestESPToggle.TextColor3 = Color3.fromRGB(255, 255, 255)
-chestESPToggle.Font = Enum.Font.GothamBold
-chestESPToggle.TextSize = 12
-chestESPToggle.Parent = chestPage
-Instance.new("UICorner", chestESPToggle).CornerRadius = UDim.new(0, 8)
-
-chestESPToggle.MouseButton1Click:Connect(function()
-    State.ChestESP = not State.ChestESP
-    chestESPToggle.BackgroundColor3 = State.ChestESP and Color3.fromRGB(0, 180, 90) or Color3.fromRGB(45, 45, 60)
-    chestESPToggle.Text = "Chest ESP  [" .. (State.ChestESP and "ON" or "OFF") .. "]"
-    if not State.ChestESP then
-        for ch, data in pairs(chestESPObjects) do
-            if data.BB then data.BB:Destroy() end
-            chestESPObjects[ch] = nil
+ChestSection:CreateToggle({
+    Name = "Auto Chest Farm",
+    Default = false,
+    Callback = function(Value)
+        State.ChestFarm = Value
+        if Value then
+            ignoredChests = {}
+            currentChestTarget = nil
+            chestArrivedTime = 0
         end
     end
-end)
+})
 
--- Chest Info
-local chestInfo = Instance.new("TextLabel")
-chestInfo.Size = UDim2.new(1, 0, 0, 20)
-chestInfo.Position = UDim2.new(0, 0, 0, 86)
-chestInfo.BackgroundTransparency = 1
-chestInfo.Text = "Chest Farm hat Vorrang vor Fruit Tween."
-chestInfo.TextColor3 = Color3.fromRGB(140, 140, 160)
-chestInfo.Font = Enum.Font.Gotham
-chestInfo.TextSize = 10
-chestInfo.TextXAlignment = Enum.TextXAlignment.Left
-chestInfo.Parent = chestPage
-
--- ========== ESP LOOP ==========
-task.spawn(function()
-    while task.wait(0.3) do
-        if State.ChestESP then
-            updateChestESP()
+ChestSection:CreateToggle({
+    Name = "Chest ESP",
+    Default = false,
+    Callback = function(Value)
+        State.ChestESP = Value
+        if not Value then
+            for ch, data in pairs(chestESPObjects) do
+                if data.BB then data.BB:Destroy() end
+                chestESPObjects[ch] = nil
+            end
         end
     end
-end)
+})
 
-print("✅ Fruit Notifier + Auto Tween + Chest Farm geladen!")
-print("Tween Speed: 50-300 (Slider im Fruits Tab)")
-print("Chest Farm hat Vorrang wenn aktiviert.")
+local ChestInfo = Nebula.CreateSection(ChestTab, {
+    Name = "Info"
+})
+
+ChestInfo:CreateToggle({
+    Name = "Chest Farm hat Vorrang",
+    Default = true,
+    Callback = function(Value) end
+})
+
+-- =====================================================
+--  SETTINGS TAB UI
+-- =====================================================
+local SettingsSection = Nebula.CreateSection(SettingsTab, {
+    Name = "Allgemein"
+})
+
+SettingsSection:CreateToggle({
+    Name = "Noclip",
+    Default = false,
+    Callback = function(Value)
+        local function setNoclip(c, state)
+            if not c then return end
+            pcall(function()
+                for _, p in pairs(c:GetDescendants()) do
+                    if p:IsA("BasePart") then p.CanCollide = not state end
+                end
+            end)
+        end
+        if Value then
+            LocalPlayer.CharacterAdded:Connect(function(c)
+                task.wait(0.1)
+                setNoclip(c, true)
+            end)
+            if LocalPlayer.Character then setNoclip(LocalPlayer.Character, true) end
+        else
+            if LocalPlayer.Character then setNoclip(LocalPlayer.Character, false) end
+        end
+    end
+})
+
+SettingsSection:CreateSlider({
+    Name = "WalkSpeed",
+    Min = 16,
+    Max = 300,
+    Default = 16,
+    Suffix = " Studs",
+    Callback = function(Value)
+        local char = LocalPlayer.Character
+        if char and char:FindFirstChildOfClass("Humanoid") then
+            char:FindFirstChildOfClass("Humanoid").WalkSpeed = Value
+        end
+    end
+})
+
+local InfoSection2 = Nebula.CreateSection(SettingsTab, {
+    Name = "Info"
+})
+
+InfoSection2:CreateTextBox({
+    Placeholder = "Version",
+    Default = "v1.0 · Nebula UI",
+    Callback = function(Text) end
+})
+
+Window:Notify({
+    Title = "✅ Geladen!",
+    Content = "Fruit Notifier + Auto Tween + Chest Farm",
+    Type = "success",
+    Duration = 5,
+    Icon = "✅"
+})
+
+print("✅ Fruit Notifier + Auto Tween + Chest Farm (Nebula UI) geladen!")
