@@ -1,4 +1,4 @@
--- Fruit Notifier + Auto Tween + Chest Farm (Nebula UI Edition)
+-- Fruit Notifier + Auto Tween + Chest Farm (Nebula UI Edition) - FIXED
 -- Features: Fruit Notifier, Auto Tween (jede Distanz), Chest Farm, Chest ESP, Tween Speed Slider (50-300)
 
 if not game:IsLoaded() then game.Loaded:Wait() end
@@ -19,6 +19,30 @@ local TweenService     = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local CollectionService= game:GetService("CollectionService")
 local LocalPlayer      = Players.LocalPlayer
+
+-- =====================================================
+--  HELPER: Section erstellen (kompatibel mit beiden APIs)
+-- =====================================================
+local function CreateSection(tab, name)
+    -- Versuch 1: Tab-Methode mit String
+    local ok, res = pcall(function() return tab:CreateSection(name) end)
+    if ok and res then return res end
+
+    -- Versuch 2: Tab-Methode mit Table
+    ok, res = pcall(function() return tab:CreateSection({ Name = name }) end)
+    if ok and res then return res end
+
+    -- Versuch 3: Globale Funktion mit Table
+    ok, res = pcall(function() return Nebula.CreateSection(tab, { Name = name }) end)
+    if ok and res then return res end
+
+    -- Versuch 4: Globale Funktion mit String
+    ok, res = pcall(function() return Nebula.CreateSection(tab, name) end)
+    if ok and res then return res end
+
+    warn("[Nebula] Could not create section: " .. tostring(name))
+    return nil
+end
 
 -- =====================================================
 --  FRUIT ERKENNUNG
@@ -51,20 +75,6 @@ local function getChests()
     return list
 end
 
-local function findNearestChest()
-    local root = getRoot()
-    if not root then return nil end
-    local nearest, minDist = nil, math.huge
-    for _, ch in ipairs(getChests()) do
-        local d = (ch:GetPivot().Position - root.Position).Magnitude
-        if d < minDist then
-            minDist = d
-            nearest = ch
-        end
-    end
-    return nearest, minDist
-end
-
 -- =====================================================
 --  STATE
 -- =====================================================
@@ -81,10 +91,10 @@ local function autoTweenActive()
 end
 
 -- =====================================================
---  NEBULA WINDOW ERSTELLEN
+--  NEBULA WINDOW
 -- =====================================================
 local Window = Nebula.CreateWindow({
-    Title = "🍎 Fruit & Chest Farm",
+    Title = "Fruit & Chest Farm",
     ConfigName = "FruitChestFarm_Nebula",
     ShowLoading = true,
     LoadingDuration = 3,
@@ -97,7 +107,7 @@ local Window = Nebula.CreateWindow({
 })
 
 -- =====================================================
---  TABS ERSTELLEN
+--  TABS
 -- =====================================================
 local FruitTab    = Window:CreateTab("Fruits", "🍎")
 local ChestTab    = Window:CreateTab("Chest Farm", "📦")
@@ -116,7 +126,7 @@ local function trackFruit(fruit)
 
     Window:Notify({
         Title = "🍎 Fruit spawned",
-        Content = fruit.Name .. "  ·  " .. dist .. " studs",
+        Content = fruit.Name .. "  -  " .. dist .. " studs",
         Type = "info",
         Duration = 6,
         Icon = "🍎"
@@ -147,7 +157,7 @@ workspace.DescendantAdded:Connect(function(obj)
 end)
 
 -- =====================================================
---  AUTO TWEEN (jede Distanz)
+--  AUTO TWEEN
 -- =====================================================
 local isTweening = false
 
@@ -338,142 +348,122 @@ end)
 -- =====================================================
 --  FRUIT TAB UI
 -- =====================================================
-local FruitSection = Nebula.CreateSection(FruitTab, {
-    Name = "Auto Tween"
-})
+local FruitSection = CreateSection(FruitTab, "Auto Tween")
+if FruitSection then
+    FruitSection:CreateToggle({
+        Name = "Auto Tween Fruits",
+        Default = false,
+        Callback = function(Value)
+            State.TweenEnabled = Value
+        end
+    })
 
-FruitSection:CreateToggle({
-    Name = "Auto Tween Fruits",
-    Default = false,
-    Callback = function(Value)
-        State.TweenEnabled = Value
-    end
-})
+    FruitSection:CreateSlider({
+        Name = "Tween Speed",
+        Min = 50,
+        Max = 300,
+        Default = 220,
+        Suffix = " studs/s",
+        Callback = function(Value)
+            State.TweenSpeed = Value
+        end
+    })
+end
 
-FruitSection:CreateSlider({
-    Name = "Tween Speed",
-    Min = 50,
-    Max = 300,
-    Default = 220,
-    Suffix = " studs/s",
-    Callback = function(Value)
-        State.TweenSpeed = Value
-    end
-})
-
-local InfoSection = Nebula.CreateSection(FruitTab, {
-    Name = "Info"
-})
-
-InfoSection:CreateToggle({
-    Name = "Tweent zu JEDER Distanz",
-    Default = true,
-    Callback = function(Value)
-        -- Nur Info-Toggle (immer an)
-    end
-})
+-- Fix: Richtiger Funktionsaufruf mit Klammern statt "and"
+local FruitInfo = CreateSection(FruitTab, "Info")
+if FruitInfo and FruitInfo.CreateLabel then
+    FruitInfo:CreateLabel("Tweent zu JEDER Distanz automatisch.")
+end
 
 -- =====================================================
 --  CHEST TAB UI
 -- =====================================================
-local ChestSection = Nebula.CreateSection(ChestTab, {
-    Name = "Chest Farm"
-})
-
-ChestSection:CreateToggle({
-    Name = "Auto Chest Farm",
-    Default = false,
-    Callback = function(Value)
-        State.ChestFarm = Value
-        if Value then
-            ignoredChests = {}
-            currentChestTarget = nil
-            chestArrivedTime = 0
-        end
-    end
-})
-
-ChestSection:CreateToggle({
-    Name = "Chest ESP",
-    Default = false,
-    Callback = function(Value)
-        State.ChestESP = Value
-        if not Value then
-            for ch, data in pairs(chestESPObjects) do
-                if data.BB then data.BB:Destroy() end
-                chestESPObjects[ch] = nil
+local ChestSection = CreateSection(ChestTab, "Chest Farm")
+if ChestSection then
+    ChestSection:CreateToggle({
+        Name = "Auto Chest Farm",
+        Default = false,
+        Callback = function(Value)
+            State.ChestFarm = Value
+            if Value then
+                ignoredChests = {}
+                currentChestTarget = nil
+                chestArrivedTime = 0
             end
         end
-    end
-})
+    })
 
-local ChestInfo = Nebula.CreateSection(ChestTab, {
-    Name = "Info"
-})
+    ChestSection:CreateToggle({
+        Name = "Chest ESP",
+        Default = false,
+        Callback = function(Value)
+            State.ChestESP = Value
+            if not Value then
+                for ch, data in pairs(chestESPObjects) do
+                    if data.BB then data.BB:Destroy() end
+                    chestESPObjects[ch] = nil
+                end
+            end
+        end
+    })
+end
 
-ChestInfo:CreateToggle({
-    Name = "Chest Farm hat Vorrang",
-    Default = true,
-    Callback = function(Value) end
-})
+-- Fix: Richtiger Funktionsaufruf mit Klammern statt "and"
+local ChestInfo = CreateSection(ChestTab, "Info")
+if ChestInfo and ChestInfo.CreateLabel then
+    ChestInfo:CreateLabel("Chest Farm hat Vorrang vor Fruit Tween.")
+end
 
 -- =====================================================
 --  SETTINGS TAB UI
 -- =====================================================
-local SettingsSection = Nebula.CreateSection(SettingsTab, {
-    Name = "Allgemein"
-})
-
-SettingsSection:CreateToggle({
-    Name = "Noclip",
-    Default = false,
-    Callback = function(Value)
-        local function setNoclip(c, state)
-            if not c then return end
-            pcall(function()
-                for _, p in pairs(c:GetDescendants()) do
-                    if p:IsA("BasePart") then p.CanCollide = not state end
-                end
-            end)
+local SettingsSection = CreateSection(SettingsTab, "Allgemein")
+if SettingsSection then
+    SettingsSection:CreateToggle({
+        Name = "Noclip",
+        Default = false,
+        Callback = function(Value)
+            local function setNoclip(c, state)
+                if not c then return end
+                pcall(function()
+                    for _, p in pairs(c:GetDescendants()) do
+                        if p:IsA("BasePart") then p.CanCollide = not state end
+                    end
+                end)
+            end
+            if Value then
+                LocalPlayer.CharacterAdded:Connect(function(c)
+                    task.wait(0.1)
+                    setNoclip(c, true)
+                end)
+                if LocalPlayer.Character then setNoclip(LocalPlayer.Character, true) end
+            else
+                if LocalPlayer.Character then setNoclip(LocalPlayer.Character, false) end
+            end
         end
-        if Value then
-            LocalPlayer.CharacterAdded:Connect(function(c)
-                task.wait(0.1)
-                setNoclip(c, true)
-            end)
-            if LocalPlayer.Character then setNoclip(LocalPlayer.Character, true) end
-        else
-            if LocalPlayer.Character then setNoclip(LocalPlayer.Character, false) end
+    })
+
+    SettingsSection:CreateSlider({
+        Name = "WalkSpeed",
+        Min = 16,
+        Max = 300,
+        Default = 16,
+        Suffix = " Studs",
+        Callback = function(Value)
+            local char = LocalPlayer.Character
+            if char and char:FindFirstChildOfClass("Humanoid") then
+                char:FindFirstChildOfClass("Humanoid").WalkSpeed = Value
+            end
         end
-    end
-})
+    })
+end
 
-SettingsSection:CreateSlider({
-    Name = "WalkSpeed",
-    Min = 16,
-    Max = 300,
-    Default = 16,
-    Suffix = " Studs",
-    Callback = function(Value)
-        local char = LocalPlayer.Character
-        if char and char:FindFirstChildOfClass("Humanoid") then
-            char:FindFirstChildOfClass("Humanoid").WalkSpeed = Value
-        end
-    end
-})
-
-local InfoSection2 = Nebula.CreateSection(SettingsTab, {
-    Name = "Info"
-})
-
-InfoSection2:CreateTextBox({
-    Placeholder = "Version",
-    Default = "v1.0 · Nebula UI",
-    Callback = function(Text) end
-})
-
+-- =====================================================
+--  READY NOTIFICATION
+-- =====================================================
 Window:Notify({
-    Title = "✅ Geladen!",
+    Title = "Geladen!",
     Content = "Fruit Notifier + Auto Tween + Chest Farm",
     Type = "success",
     Duration = 5,
