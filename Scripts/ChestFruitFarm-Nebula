@@ -195,7 +195,8 @@ local function UpdateChestESP()
 end
 
 -- ESP Loop
-task.spawn(function() while task.wait(0.3) do if _G.ChestESP then UpdateChestESP() end if _G.FruitESP then UpdateFruitESP() end end end)
+task.spawn(function() while task.wait(0.3) do if _G.ChestESP then UpdateChestESP() end 
+if _G.FruitESP then UpdateFruitESP() end end end)
 
 local function FindNearestChest()
     local r = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart"); if not r then return nil, nil end; local p = r.Position; local n = nil; local m = math.huge
