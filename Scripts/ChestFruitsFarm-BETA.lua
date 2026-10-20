@@ -1,10 +1,11 @@
--- Fruit Notifier + Auto Tween + Chest Farm (Nebula UI Edition) - CLEAN & STABLE
--- Features: Fruit Notifier, Auto Tween, Chest Farm, Chest ESP, Tween Speed Slider
+-- Chest & Fruit Farm Script - Nebula UI Edition (Full Port)
+-- Features: Alle Original-Funktionen, Chest Farm, Fruit ESP, Auto Collect Fruit, Noclip, Serverhop
 
 if not game:IsLoaded() then game.Loaded:Wait() end
+repeat task.wait() until game:GetService("Players") and game:GetService("Workspace") and game:GetService("ReplicatedStorage")
 
 -- =====================================================
---  NEBULA UI LADEN (mit Retry & Fehlerfang)
+--  NEBULA UI LADEN
 -- =====================================================
 local Nebula
 local success, err = pcall(function()
@@ -15,331 +16,284 @@ if not success or not Nebula then
     return
 end
 
--- =====================================================
---  SERVICES
--- =====================================================
-local Players          = game:GetService("Players")
-local RunService       = game:GetService("RunService")
-local CoreGui          = game:GetService("CoreGui")
-local TweenService     = game:GetService("TweenService")
+local Players = game:GetService("Players")
+local CollectionService = game:GetService("CollectionService")
+local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
-local CollectionService= game:GetService("CollectionService")
-local LocalPlayer      = Players.LocalPlayer
+local RunService = game:GetService("RunService")
+local CoreGui = game:GetService("CoreGui")
+local TeleportService = game:GetService("TeleportService")
+local HttpService = game:GetService("HttpService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local LP = Players.LocalPlayer
 
--- =====================================================
---  VARIABLEN & STATE (Alles ganz oben, um Linter-Warnungen zu vermeiden!)
--- =====================================================
-local State = {
-    TweenEnabled = false,
-    TweenSpeed   = 220,
-    KnownFruits  = {},
-    ChestFarm    = false,
-    ChestESP     = false,
+-- ==================== VARIABLEN ====================
+local espObjects = {}; local fruitEspObjects = {}; local currentTween = nil
+local lastTeleportTime = 0; local currentChestTarget = nil; local chestArrivedTime = 0; local ignoredChests = {}
+local chestsCollected = 0; local totalChestsEver = 0; local lastServerhopTime = 0
+local isServerhopping = false; local BLOX_FRUITS_PLACE_ID = 2753915549
+local isFarmingFruit = false
+
+-- State Variablen (Synchronisiert mit UI)
+local _G = {
+    ChestFarm = false, ChestESP = false, FruitESP = false, AutoFruit = false,
+    AutoServerhop = false, AutoMarines = false, AutoPirates = false,
+    ServerhopInterval = 100, ChestTarget = 100, NoclipActive = true
 }
 
-local isTweening = false
-local chestESPObjects = {}
-local ignoredChests = {}
-local currentChestTarget = nil
-local chestArrivedTime = 0
-
--- =====================================================
---  HELPER: Section erstellen
--- =====================================================
-local function CreateSection(tab, name)
-    local ok, res = pcall(function() return tab:CreateSection(name) end)
-    if ok and res then return res end
-    ok, res = pcall(function() return tab:CreateSection({ Name = name }) end)
-    if ok and res then return res end
-    ok, res = pcall(function() return Nebula.CreateSection(tab, { Name = name }) end)
-    if ok and res then return res end
-    ok, res = pcall(function() return Nebula.CreateSection(tab, name) end)
-    if ok and res then return res end
-    warn("[Nebula] Could not create section: " .. tostring(name))
-    return nil
-end
-
--- =====================================================
---  FRUIT / CHEST LOGIK
--- =====================================================
-local function isFruit(obj)
-    if not obj or not obj:IsA("Tool") then return false end
-    local n = obj.Name
-    return n:find("Fruit") or n:find("fruit") or n:find("%-")
-end
-
-local function getHandle(obj)
-    return obj:FindFirstChild("Handle") or obj
-end
-
-local function getRoot()
-    local char = LocalPlayer.Character
-    return char and char:FindFirstChild("HumanoidRootPart")
-end
-
-local function getChests()
-    local list = {}
-    for _, ch in pairs(CollectionService:GetTagged("_ChestTagged")) do
-        if ch and ch:IsA("BasePart") and not ch:GetAttribute("IsDisabled") then
-            table.insert(list, ch)
+-- ==================== TEAM JOIN ====================
+local function JoinTeam(team)
+    pcall(function()
+        if ReplicatedStorage:FindFirstChild("Remotes") and ReplicatedStorage.Remotes:FindFirstChild("CommF_") then
+            ReplicatedStorage.Remotes.CommF_:InvokeServer("SetTeam", team)
         end
-    end
-    return list
+    end)
 end
 
--- =====================================================
---  NEBULA WINDOW & UI AUFBAU (Zuerst!)
--- =====================================================
+-- ==================== TWEEN HELPER ====================
+local function Tween(obj, props, dur)
+    local t = TweenService:Create(obj, TweenInfo.new(dur or 0.3, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), props)
+    t:Play(); return t
+end
+
+-- ==================== FRUIT DETECTION ====================
+local function GetFruits()
+    local fruits = {}
+    pcall(function()
+        for _, obj in pairs(workspace:GetChildren()) do
+            if obj and obj:FindFirstChild("Handle") then
+                local handle = obj.Handle
+                if handle and handle:IsA("BasePart") then
+                    if string.find(obj.Name, "Fruit") or string.find(obj.Name:lower(), "fruit") then
+                        table.insert(fruits, obj)
+                    end
+                end
+            end
+        end
+    end)
+    return fruits
+end
+
+-- ==================== NEBULA UI AUFBAU ====================
 local Window = Nebula.CreateWindow({
-    Title = "Fruit & Chest Farm",
-    ConfigName = "FruitChestFarm_Nebula",
+    Title = "Chest & Fruit Farm",
+    ConfigName = "ChestFruitFarm_Nebula",
     ShowLoading = true,
     LoadingDuration = 2,
-    LoadingSteps = {
-        "Initializing...",
-        "Building UI...",
-        "Ready!"
-    }
+    LoadingSteps = { "Initializing...", "Loading UI...", "Ready!" }
 })
 
-local FruitTab    = Window:CreateTab("Fruits", "🍎")
-local ChestTab    = Window:CreateTab("Chest Farm", "📦")
-local SettingsTab = Window:CreateTab("Settings", "⚙")
+local MainTab    = Window:CreateTab("Main", "🎯")
+local FruitTab   = Window:CreateTab("Fruits", "🍎")
+local ServerTab  = Window:CreateTab("Server", "🔄")
+local TeamTab    = Window:CreateTab("Team", "👥")
+local SetTab     = Window:CreateTab("Set", "⚙")
 
--- FRUIT TAB
-local FruitSection = CreateSection(FruitTab, "Auto Tween")
-if FruitSection then
-    FruitSection:CreateToggle({
-        Name = "Auto Tween Fruits",
-        Default = false,
-        Callback = function(Value) State.TweenEnabled = Value end
-    })
-    FruitSection:CreateSlider({
-        Name = "Tween Speed",
-        Min = 50, Max = 300, Default = 220, Suffix = " studs/s",
-        Callback = function(Value) State.TweenSpeed = Value end
-    })
-end
-local FruitInfo = CreateSection(FruitTab, "Info")
-if FruitInfo and FruitInfo.CreateLabel then
-    FruitInfo:CreateLabel("Tweent zu JEDER Distanz automatisch.")
-end
-
--- CHEST TAB
-local ChestSection = CreateSection(ChestTab, "Chest Farm")
-if ChestSection then
-    ChestSection:CreateToggle({
-        Name = "Auto Chest Farm",
-        Default = false,
-        Callback = function(Value) 
-            State.ChestFarm = Value 
-            if Value then 
-                ignoredChests = {} 
-                currentChestTarget = nil 
-            end
+-- ==================== MAIN TAB ====================
+local MainSec = Nebula.CreateSection(MainTab, { Name = "🎯 Chest Farm" })
+if MainSec then
+    MainSec:CreateToggle({ Name = "Auto Farm Chest", Default = _G.ChestFarm, Callback = function(v)
+        _G.ChestFarm = v
+        if v then ignoredChests = {}; currentChestTarget = nil; chestArrivedTime = 0; chestsCollected = 0
+        else if currentTween then pcall(function() currentTween:Cancel() end); currentTween = nil end; ignoredChests = {}; currentChestTarget = nil; chestArrivedTime = 0 end
+    end })
+    
+    MainSec:CreateToggle({ Name = "Chest ESP", Default = _G.ChestESP, Callback = function(v)
+        _G.ChestESP = v
+        if not v then for _, d in pairs(espObjects) do if d.BB then d.BB:Destroy() end end; espObjects = {} end
+    end })
+    
+    MainSec:CreateToggle({ Name = "Noclip", Default = _G.NoclipActive, Callback = function(v)
+        _G.NoclipActive = v
+        if not v and LP.Character then
+            pcall(function() for _, p in pairs(LP.Character:GetDescendants()) do if p:IsA("BasePart") then p.CanCollide = true end end end)
         end
-    })
-    ChestSection:CreateToggle({
-        Name = "Chest ESP",
-        Default = false,
-        Callback = function(Value) 
-            State.ChestESP = Value 
-            if not Value then
-                for ch, data in pairs(chestESPObjects) do
-                    if data.BB then data.BB:Destroy() end
-                    chestESPObjects[ch] = nil
-                end
-            end
-        end
-    })
-end
-local ChestInfo = CreateSection(ChestTab, "Info")
-if ChestInfo and ChestInfo.CreateLabel then
-    ChestInfo:CreateLabel("Chest Farm hat Vorrang vor Fruit Tween.")
+    end })
 end
 
--- SETTINGS TAB
-local SettingsSection = CreateSection(SettingsTab, "Allgemein")
-if SettingsSection then
-    SettingsSection:CreateToggle({
-        Name = "Noclip",
-        Default = false,
-        Callback = function(Value)
-            local function setNoclip(c, state)
-                if not c then return end
-                pcall(function()
-                    for _, p in pairs(c:GetDescendants()) do
-                        if p:IsA("BasePart") then p.CanCollide = not state end
-                    end
-                end)
-            end
-            if Value then
-                LocalPlayer.CharacterAdded:Connect(function(c) task.wait(0.1); setNoclip(c, true) end)
-                if LocalPlayer.Character then setNoclip(LocalPlayer.Character, true) end
-            else
-                if LocalPlayer.Character then setNoclip(LocalPlayer.Character, false) end
-            end
-        end
-    })
-    SettingsSection:CreateSlider({
-        Name = "WalkSpeed",
-        Min = 16, Max = 300, Default = 16, Suffix = " Studs",
-        Callback = function(Value)
-            local char = LocalPlayer.Character
-            if char and char:FindFirstChildOfClass("Humanoid") then
-                char:FindFirstChildOfClass("Humanoid").WalkSpeed = Value
-            end
-        end
-    })
+-- ==================== FRUIT TAB ====================
+local FruitSec = Nebula.CreateSection(FruitTab, { Name = "🍎 Fruit Farm" })
+if FruitSec then
+    FruitSec:CreateToggle({ Name = "Fruit ESP", Default = _G.FruitESP, Callback = function(v)
+        _G.FruitESP = v
+        if not v then for _, d in pairs(fruitEspObjects) do if d.BB then d.BB:Destroy() end end; fruitEspObjects = {} end
+    end })
+    
+    FruitSec:CreateToggle({ Name = "Auto Collect Fruit", Default = _G.AutoFruit, Callback = function(v)
+        _G.AutoFruit = v
+    end })
 end
 
--- =====================================================
---  BACKGROUND LOOPS (Mit pcall geschützt!)
--- =====================================================
+-- ==================== SERVER TAB ====================
+local ServerSec = Nebula.CreateSection(ServerTab, { Name = "🔄 Serverhop" })
+if ServerSec then
+    ServerSec:CreateToggle({ Name = "Auto Serverhop", Default = _G.AutoServerhop, Callback = function(v)
+        _G.AutoServerhop = v
+        if v then chestsCollected = 0 end
+    end })
+    
+    ServerSec:CreateSlider({ Name = "Chest Target", Min = 10, Max = 500, Default = _G.ChestTarget, Callback = function(v)
+        _G.ChestTarget = v
+    end })
+    
+    ServerSec:CreateButton({ Name = "Serverhop NOW", Callback = function()
+        if isServerhopping then return end; isServerhopping = true; task.wait(1)
+        pcall(function() TeleportService:Teleport(BLOX_FRUITS_PLACE_ID, LP) end); task.wait(5); isServerhopping = false
+    end })
+end
 
--- 1. Fruit Tracker Loop
-task.spawn(function()
-    while task.wait(2) do
-        pcall(function()
-            for _, obj in ipairs(workspace:GetDescendants()) do
-                if isFruit(obj) and not State.KnownFruits[obj] then
-                    State.KnownFruits[obj] = true
-                    local handle = getHandle(obj)
-                    local root = getRoot()
-                    local dist = root and math.floor((handle.Position - root.Position).Magnitude) or 0
-                    
-                    Window:Notify({
-                        Title = "🍎 Fruit spawned",
-                        Content = obj.Name .. " - " .. dist .. " studs",
-                        Type = "info", Duration = 5, Icon = "🍎"
-                    })
+-- ==================== TEAM TAB ====================
+local TeamSec = Nebula.CreateSection(TeamTab, { Name = "👥 Team Join" })
+if TeamSec then
+    TeamSec:CreateButton({ Name = "🔵 Join Marines", Callback = function() JoinTeam("Marines") end })
+    TeamSec:CreateButton({ Name = "🔴 Join Pirates", Callback = function() JoinTeam("Pirates") end })
+end
 
-                    obj.AncestryChanged:Connect(function(_, parent)
-                        if not parent then State.KnownFruits[obj] = nil end
-                    end)
-                end
-            end
-        end)
-    end
-end)
+-- ==================== FUNCTIONS ====================
+local function round(n) return math.floor(n + 0.5) end
 
--- 2. Auto Tween Loop
-task.spawn(function()
-    while task.wait(0.2) do
-        pcall(function()
-            if not (State.TweenEnabled and not State.ChestFarm) then return end
-            if isTweening then return end
+local function GetChestCount()
+    local c = 0
+    pcall(function() for _, ch in pairs(CollectionService:GetTagged("_ChestTagged")) do if ch and ch:IsA("BasePart") and not ch:GetAttribute("IsDisabled") then c = c + 1 end end end)
+    return c
+end
 
-            local root = getRoot()
-            if not root then return end
+local function GetFruitCount()
+    local c = 0
+    pcall(function() for _, o in pairs(workspace:GetChildren()) do if o and o:IsA("BasePart") and string.find(o.Name, "Fruit") and o:FindFirstChild("Handle") then c = c + 1 end end end)
+    return c
+end
 
-            local list = {}
-            for fruit in pairs(State.KnownFruits) do
-                if fruit and fruit.Parent then
-                    local handle = getHandle(fruit)
-                    table.insert(list, { fruit = fruit, dist = (handle.Position - root.Position).Magnitude, handle = handle })
-                end
-            end
-            table.sort(list, function(a, b) return a.dist < b.dist end)
-            if #list == 0 then return end
+local function CreateFruitESP(f)
+    if not f or fruitEspObjects[f] then return end; local h = f:FindFirstChild("Handle"); if not h or not h:IsA("BasePart") then return end
+    pcall(function()
+        local bb = Instance.new("BillboardGui"); bb.Size = UDim2.new(0, 160, 0, 30); bb.Adornee = h; bb.AlwaysOnTop = true; bb.StudsOffset = Vector3.new(0, 2, 0); bb.Parent = h
+        local bg = Instance.new("Frame"); bg.Size = UDim2.new(1, 0, 1, 0); bg.BackgroundColor3 = Color3.fromRGB(0, 0, 0); bg.BackgroundTransparency = 0.5; bg.BorderSizePixel = 0; bg.Parent = bb; Instance.new("UICorner", bg).CornerRadius = UDim.new(0, 4)
+        local l = Instance.new("TextLabel"); l.Size = UDim2.new(1, 0, 1, 0); l.BackgroundTransparency = 1; l.Text = "Fruit"; l.TextColor3 = Color3.fromRGB(255, 100, 100); l.TextScaled = true; l.Font = Enum.Font.GothamBold; l.Parent = bb
+        fruitEspObjects[f] = { BB = bb, Lbl = l }
+    end)
+end
 
-            isTweening = true
-            for _, entry in ipairs(list) do
-                if not (State.TweenEnabled and not State.ChestFarm) then break end
-                if not entry.fruit.Parent then continue end
+local function CreateChestESP(ch)
+    if not ch or espObjects[ch] then return end
+    pcall(function()
+        local bb = Instance.new("BillboardGui"); bb.Size = UDim2.new(0, 160, 0, 30); bb.Adornee = ch; bb.AlwaysOnTop = true; bb.StudsOffset = Vector3.new(0, 2, 0); bb.Parent = ch
+        local bg = Instance.new("Frame"); bg.Size = UDim2.new(1, 0, 1, 0); bg.BackgroundColor3 = Color3.fromRGB(0, 0, 0); bg.BackgroundTransparency = 0.5; bg.BorderSizePixel = 0; bg.Parent = bb; Instance.new("UICorner", bg).CornerRadius = UDim.new(0, 4)
+        local l = Instance.new("TextLabel"); l.Size = UDim2.new(1, 0, 1, 0); l.BackgroundTransparency = 1; l.Text = "Chest"; l.TextColor3 = Color3.fromRGB(255, 215, 0); l.TextScaled = true; l.Font = Enum.Font.GothamBold; l.Parent = bb
+        espObjects[ch] = { BB = bb, Lbl = l }
+    end)
+end
 
-                local dist = (entry.handle.Position - root.Position).Magnitude
-                local duration = math.max(0.05, dist / State.TweenSpeed)
-                local tween = TweenService:Create(root, TweenInfo.new(duration, Enum.EasingStyle.Linear), { CFrame = CFrame.new(entry.handle.Position) })
-                tween:Play()
-                tween.Completed:Wait()
-                task.wait(0.1)
-            end
-            isTweening = false
-        end)
-    end
-end)
+local function UpdateFruitESP()
+    local h = LP.Character and LP.Character:FindFirstChild("Head"); if not h then return end; local p = h.Position
+    for _, o in pairs(workspace:GetChildren()) do pcall(function() if o and string.find(o.Name, "Fruit") and o:FindFirstChild("Handle") then if _G.FruitESP then if not fruitEspObjects[o] then CreateFruitESP(o) end; local e = fruitEspObjects[o]; if e and e.Lbl and o.Handle then local d = round((p - o.Handle.Position).Magnitude / 3); e.Lbl.Text = o.Name .. " (" .. d .. "m)" end else if fruitEspObjects[o] then if fruitEspObjects[o].BB then fruitEspObjects[o].BB:Destroy() end; fruitEspObjects[o] = nil end end end end) end
+end
 
--- 3. Chest ESP Loop
+local function UpdateChestESP()
+    local h = LP.Character and LP.Character:FindFirstChild("Head"); if not h then return end; local p = h.Position
+    for _, ch in pairs(CollectionService:GetTagged("_ChestTagged")) do pcall(function() if ch and ch:IsA("BasePart") and not ch:GetAttribute("IsDisabled") then if _G.ChestESP then if not espObjects[ch] then CreateChestESP(ch) end; local e = espObjects[ch]; if e and e.Lbl then local d = round((p - ch:GetPivot().Position).Magnitude / 3); e.Lbl.Text = "Chest (" .. d .. "m)" end else if espObjects[ch] then if espObjects[ch].BB then espObjects[ch].BB:Destroy() end; espObjects[ch] = nil end end end end) end
+end
+
+-- ESP Loop
+task.spawn(function() while task.wait(0.3) do if _G.ChestESP then UpdateChestESP() end 
+if _G.FruitESP then UpdateFruitESP() end end end)
+
+local function FindNearestChest()
+    local r = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart"); if not r then return nil, nil end; local p = r.Position; local n = nil; local m = math.huge
+    for _, ch in pairs(CollectionService:GetTagged("_ChestTagged")) do pcall(function() if ch and ch:IsA("BasePart") and not ch:GetAttribute("IsDisabled") and not ignoredChests[ch] then local d = (ch:GetPivot().Position - p).Magnitude; if d < m then m = d; n = ch end end end) end
+    return n, m
+end
+
+local function TweenTo(pos)
+    if not LP.Character or not LP.Character:FindFirstChild("HumanoidRootPart") then return false end
+    if tick() - lastTeleportTime < 0.5 then return false end
+    local r = LP.Character.HumanoidRootPart; local d = (pos.Position - r.Position).Magnitude; local dur = math.max(d / 300, 0.1)
+    if currentTween then pcall(function() currentTween:Cancel() end); currentTween = nil end
+    currentTween = TweenService:Create(r, TweenInfo.new(dur, Enum.EasingStyle.Linear), { CFrame = pos }); currentTween:Play(); lastTeleportTime = tick()
+    task.delay(dur, function() if currentTween then currentTween = nil end end); return true
+end
+
+local function returnHRP()
+    if not LP.Character or not LP.Character:FindFirstChild("HumanoidRootPart") then return nil end
+    return LP.Character.HumanoidRootPart
+end
+
+-- ==================== AUTO FARM CHEST ====================
 task.spawn(function()
     while task.wait(0.3) do
-        pcall(function()
-            if not State.ChestESP then return end
-            local root = getRoot()
-            if not root then return end
-            local p = root.Position
-
-            for _, ch in pairs(getChests()) do
-                if not chestESPObjects[ch] then
-                    local bb = Instance.new("BillboardGui")
-                    bb.Size = UDim2.new(0, 160, 0, 30)
-                    bb.Adornee = ch; bb.AlwaysOnTop = true; bb.StudsOffset = Vector3.new(0, 2, 0); bb.Parent = ch
-                    
-                    local bg = Instance.new("Frame")
-                    bg.Size = UDim2.new(1, 0, 1, 0); bg.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-                    bg.BackgroundTransparency = 0.5; bg.BorderSizePixel = 0; bg.Parent = bb
-                    Instance.new("UICorner", bg).CornerRadius = UDim.new(0, 4)
-
-                    local l = Instance.new("TextLabel")
-                    l.Size = UDim2.new(1, 0, 1, 0); l.BackgroundTransparency = 1; l.Text = "Chest"
-                    l.TextColor3 = Color3.fromRGB(255, 215, 0); l.TextScaled = true; l.Font = Enum.Font.GothamBold; l.Parent = bb
-
-                    chestESPObjects[ch] = { BB = bb, Lbl = l }
+        if _G.ChestFarm and not isFarmingFruit then
+            pcall(function()
+                if not LP.Character or not LP.Character:FindFirstChild("HumanoidRootPart") then return end
+                local r = LP.Character.HumanoidRootPart; local pp = r.Position
+                
+                if _G.AutoServerhop and chestsCollected >= _G.ChestTarget and tick() - lastServerhopTime > 30 then
+                    lastServerhopTime = tick(); isServerhopping = true; task.wait(1); pcall(function() TeleportService:Teleport(BLOX_FRUITS_PLACE_ID, LP) end); task.wait(5); isServerhopping = false; return
                 end
-                local e = chestESPObjects[ch]
-                if e and e.Lbl then
-                    e.Lbl.Text = "Chest (" .. math.floor((p - ch:GetPivot().Position).Magnitude / 3 + 0.5) .. "m)"
+                
+                if currentChestTarget then
+                    local dist = (currentChestTarget:GetPivot().Position - pp).Magnitude
+                    if dist < 10 then
+                        if chestArrivedTime == 0 then chestArrivedTime = tick()
+                        else local rem = math.max(0, 5 - (tick() - chestArrivedTime))
+                            if tick() - chestArrivedTime > 5 then ignoredChests[currentChestTarget] = true; currentChestTarget = nil; chestArrivedTime = 0; if currentTween then pcall(function() currentTween:Cancel() end); currentTween = nil end; task.wait(0.5); return end
+                        end
+                    else if chestArrivedTime > 0 then chestArrivedTime = 0 end end
                 end
-            end
-        end)
+                
+                local ch, dist = FindNearestChest()
+                if ch and dist then
+                    if ch ~= currentChestTarget then currentChestTarget = ch; chestArrivedTime = 0 end
+                    TweenTo(CFrame.new(ch:GetPivot().Position + Vector3.new(0, 3, 0)))
+                    if dist < 15 then chestsCollected = chestsCollected + 1; totalChestsEver = totalChestsEver + 1 end
+                else currentChestTarget = nil; chestArrivedTime = 0; task.wait(1) end
+            end)
+        end
     end
 end)
 
--- 4. Chest Farm Loop
+-- ==================== AUTO COLLECT FRUIT ====================
 task.spawn(function()
-    while task.wait(0.3) do
-        pcall(function()
-            if not (State.ChestFarm and not isTweening) then return end
-            local root = getRoot()
-            if not root then return end
-
-            if currentChestTarget then
-                if (currentChestTarget:GetPivot().Position - root.Position).Magnitude < 10 then
-                    if chestArrivedTime == 0 then chestArrivedTime = tick()
-                    elseif tick() - chestArrivedTime > 5 then
-                        ignoredChests[currentChestTarget] = true
-                        currentChestTarget = nil; chestArrivedTime = 0
+    while task.wait(0.5) do
+        if _G.AutoFruit and not _G.ChestFarm then
+            pcall(function()
+                if not LP.Character or not LP.Character:FindFirstChild("HumanoidRootPart") then return end
+                local r = LP.Character.HumanoidRootPart; local pp = r.Position
+                local fruits = GetFruits()
+                
+                for _, fruit in pairs(fruits) do
+                    if fruit and fruit:FindFirstChild("Handle") then
+                        local h = fruit.Handle
+                        if h and h:IsA("BasePart") then
+                            local dist = (h.Position - pp).Magnitude
+                            if dist < 200 then
+                                isFarmingFruit = true
+                                TweenTo(CFrame.new(h.Position - Vector3.new(0, 5, 0)))
+                                local waited = 0
+                                repeat
+                                    task.wait(0.2); waited = waited + 0.2
+                                    if returnHRP() then local currentDist = (returnHRP().Position - h.Position).Magnitude; if currentDist < 10 then break end end
+                                until waited > 5 or not fruit.Parent
+                                
+                                task.wait(0.3)
+                                if fruit and fruit.Parent then
+                                    local fruitName = string.gsub(fruit.Name, " Fruit", "")
+                                    fruitName = fruitName .. "-" .. fruitName
+                                    pcall(function()
+                                        local tool = LP.Character and LP.Character:FindFirstChildOfClass("Tool")
+                                        ReplicatedStorage.Remotes.CommF_:InvokeServer("StoreFruit", fruitName, tool)
+                                    end)
+                                    task.wait(0.3)
+                                end
+                                isFarmingFruit = false; break
+                            end
+                        end
                     end
-                else chestArrivedTime = 0 end
-            end
-
-            local best, bestD = nil, math.huge
-            for _, c in ipairs(getChests()) do
-                if not ignoredChests[c] then
-                    local d = (c:GetPivot().Position - root.Position).Magnitude
-                    if d < bestD then bestD = d; best = c end
                 end
-            end
-
-            if best and bestD then
-                if best ~= currentChestTarget then currentChestTarget = best; chestArrivedTime = 0 end
-                local duration = math.max(0.05, (best:GetPivot().Position - root.Position).Magnitude / State.TweenSpeed)
-                local tween = TweenService:Create(root, TweenInfo.new(duration, Enum.EasingStyle.Linear), { CFrame = best:GetPivot().Position + Vector3.new(0, 3, 0) })
-                tween:Play(); tween.Completed:Wait()
-            else
-                currentChestTarget = nil; chestArrivedTime = 0; task.wait(1)
-            end
-        end)
+                isFarmingFruit = false
+            end)
+        end
     end
 end)
 
--- =====================================================
---  READY NOTIFICATION
--- =====================================================
-Window:Notify({
-    Title = "Geladen!",
-    Content = "Fruit Notifier + Auto Tween + Chest Farm",
-    Type = "success", Duration = 5, Icon = "✅"
-})
-
-print("✅ Script erfolgreich geladen!")
+Window:Notify({ Title = "Geladen!", Content = "Chest & Fruit Farm (Nebula Port)", Type = "success", Duration = 5 })
+print("✅ Chest & Fruit Farm geladen (Nebula Port)!")
